@@ -349,3 +349,11 @@ textarea.note-edit { width: 100%; max-width: 60ch; background: var(--raise); col
 .yt-form input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line); color: var(--fg); font-size: 13px; }
 .menu { max-width: min(340px, calc(100vw - 32px)); }
 .menu .yt-form .btn { width: auto; flex: none; text-align: center; padding: 6px 12px; }
+
+/* new releases, album links */
+.new-sec { margin-top: 28px; }
+.on-shelf { margin-top: 8px; text-transform: none; letter-spacing: 0; }
+.steps { display: grid; gap: 14px; max-width: 68ch; padding-left: 22px; margin: 22px 0; }
+.steps p { margin: 10px 0 0; }
+.bookmarklet { cursor: grab; display: inline-block; }
+#account .btn { white-space: nowrap; }

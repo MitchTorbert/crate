@@ -8,10 +8,10 @@ const Catalog = (() => {
   const GAP = 120; // ms between calls; Deezer allows 50 per 5 seconds
   let seq = 0, last = 0, chain = Promise.resolve();
 
-  const cacheGet = (k) => {
+  const cacheGet = (k, ttl = TTL) => {
     try {
       const v = JSON.parse(localStorage.getItem("dz:" + k));
-      return v && Date.now() - v.t < TTL ? v.d : null;
+      return v && Date.now() - v.t < ttl ? v.d : null;
     } catch { return null; }
   };
   const cachePut = (k, d) => {
@@ -33,9 +33,9 @@ const Catalog = (() => {
   }
 
   // Serialize calls with a small gap, retrying when Deezer says we're too fast.
-  function call(path, params = {}, { cache = true } = {}) {
+  function call(path, params = {}, { cache = true, ttl } = {}) {
     const key = path + "?" + new URLSearchParams(params);
-    const hit = cache && cacheGet(key);
+    const hit = cache && cacheGet(key, ttl);
     if (hit) return Promise.resolve(hit);
     const run = async () => {
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -61,14 +61,14 @@ const Catalog = (() => {
     .replace(/\s*[\(\[][^)\]]*(deluxe|edition|remaster|anniversary|expanded|bonus|explicit|reissue|version)[^)\]]*[\)\]]/g, "")
     .replace(/[^a-z0-9]+/g, "");
   const clean = (t) => String(t || "").replace(/\s*[\(\[][^)\]]*(deluxe|edition|remaster|anniversary|expanded|bonus|explicit|reissue)[^)\]]*[\)\]]/gi, "").trim() || t;
-  const SKIP = /\b(live|acoustic|instrumental|karaoke|commentary|tribute|greatest|hitz|best of|collection|essential|anthology|playlist|addendum|play your old stuff)\b/i;
+  const SKIP = /\b(live|acoustic|instrumental|karaoke|commentary|tribute|greatest|hitz|best of|collection|essential|anthology|playlist|addendum|play your old stuff|workout|favou?rites?|favs|deep cuts|sessions?|remix(es|ed)?|reimagined|re-?recorded|redux|covers|singles|demos?|rarities|b-sides|unplugged|anniversary)\b|\b\d\.0\b|\bvol(ume)?\.? ?\d/i;
 
   function album(a, artist) {
     artist = artist || a.artist || {};
     const y = (a.release_date || "").slice(0, 4);
     return {
       deezerId: a.id, title: clean(a.title), artist: artist.name || "", artistId: artist.id ?? null,
-      year: /^\d{4}$/.test(y) ? Number(y) : null, cover: a.cover_big || a.cover_medium || "",
+      year: /^\d{4}$/.test(y) ? Number(y) : null, released: a.release_date || "", cover: a.cover_big || a.cover_medium || "",
       type: a.record_type || "album", fans: a.fans || 0,
     };
   }
@@ -200,11 +200,15 @@ const Catalog = (() => {
     return a ? album(a) : null;
   }
 
-  async function artistAlbums(artistId) {
-    const [d, artist] = await Promise.all([call(`/artist/${artistId}/albums`, { limit: 100 }), call(`/artist/${artistId}`)]);
+  // Discographies are re-checked daily so new releases show up quickly.
+  async function artistAlbums(artistId, { name, types = ["album"] } = {}) {
+    const [d, artist] = await Promise.all([
+      call(`/artist/${artistId}/albums`, { limit: 100 }, { ttl: 24 * 3600 * 1000 }),
+      name ? { id: artistId, name } : call(`/artist/${artistId}`),
+    ]);
     const seen = new Set(), out = [];
     for (const a of d?.data || []) {
-      if (a.record_type !== "album" || SKIP.test(a.title)) continue;
+      if (!types.includes(a.record_type) || SKIP.test(a.title)) continue;
       const k = norm(a.title);
       if (seen.has(k)) continue;
       seen.add(k);
@@ -261,6 +265,44 @@ const Catalog = (() => {
     return shuffle(out, r);
   }
 
+  // ---------------------------------------------------------------- new releases
+
+  /** Albums and EPs from these artists released on or after `since` (YYYY-MM-DD), newest first. */
+  async function newFrom(artists, since) {
+    const out = [];
+    for (const [id, name] of artists) {
+      for (const a of await artistAlbums(id, { name, types: ["album", "ep"] }).catch(() => [])) {
+        if (a.released >= since) out.push(a);
+      }
+    }
+    return out.sort((a, b) => b.released.localeCompare(a.released));
+  }
+
+  /**
+   * Recent albums by bands related to the library but not in it. Bands related to
+   * several of your artists rank first, then the ones with the biggest followings.
+   */
+  async function newNearby(artists, since, { limitArtists = 45 } = {}) {
+    const near = new Map(); // id -> { name, fans, because: [names] }
+    for (const [id, name] of artists) {
+      for (const x of (await related(id).catch(() => [])).slice(0, 10)) {
+        if (artists.has(x.id)) continue;
+        const e = near.get(x.id) || { name: x.name, fans: x.nb_fan || 0, because: [] };
+        if (!e.because.includes(name)) e.because.push(name);
+        near.set(x.id, e);
+      }
+    }
+    const top = [...near].sort((a, b) => b[1].because.length - a[1].because.length || b[1].fans - a[1].fans).slice(0, limitArtists);
+    const out = [];
+    for (const [id, e] of top) {
+      // One release per band, its newest, so a busy band can't fill the page.
+      const fresh = (await artistAlbums(id, { name: e.name }).catch(() => [])).filter((a) => a.released >= since)
+        .sort((a, b) => b.released.localeCompare(a.released));
+      if (fresh.length) out.push({ ...fresh[0], because: e.because, weight: e.because.length });
+    }
+    return out.sort((a, b) => b.weight - a.weight || b.fans - a.fans);
+  }
+
   // ---------------------------------------------------------------- YouTube Music links
 
   const ytSearchUrl = (a) => "https://music.youtube.com/search?q=" + encodeURIComponent(`${a.artist} ${a.title}`);
@@ -281,5 +323,5 @@ const Catalog = (() => {
     return "";
   }
 
-  return { search, find, toDeezer, sim, detail, artistAlbums, related, suggest, norm, ytSearchUrl, resolveYouTube, rng, shuffle };
+  return { search, find, toDeezer, sim, detail, newFrom, newNearby, artistAlbums, related, suggest, norm, ytSearchUrl, resolveYouTube, rng, shuffle };
 })();

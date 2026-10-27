@@ -43,6 +43,7 @@ function rebuild() {
 function onData(raw) {
   S.raw = raw;
   rebuild();
+  applyPendingYtLinks();
   renderRail();
   const f = document.activeElement;
   if (f && view.contains(f) && /INPUT|TEXTAREA|SELECT/.test(f.tagName)) return;
@@ -150,6 +151,16 @@ function parseTyped(text) {
 
 // ------------------------------------------------------------------ rail & account
 
+function wireTheme() {
+  $("#theme").onclick = () => {
+    const order = Object.keys(THEMES);
+    const next = order[(order.indexOf(themeNow()) + 1) % order.length];
+    try { localStorage.setItem("crate:theme", next); } catch {}
+    document.documentElement.dataset.theme = next;
+    renderAccount();
+  };
+}
+
 function renderRail() {
   $("#shelf-nav").innerHTML = S.lib.shelves.map((s) => `
     <a class="rail-link" href="#shelf-${s.id}" data-shelf="${s.id}">
@@ -158,12 +169,17 @@ function renderRail() {
   markActive();
 }
 
+const THEMES = { dark: "Dark", light: "Light", auto: "Match Mac" };
+function themeNow() { try { return localStorage.getItem("crate:theme") || "dark"; } catch { return "dark"; } }
+
 function renderAccount() {
   const el = $("#account");
-  if (!Store.canSync()) { el.innerHTML = `<span class="meta">Saved on this device</span>`; return; }
-  el.innerHTML = S.user
+  const theme = `<button class="btn" id="theme" title="Switch between dark, light, and your device's setting">${THEMES[themeNow()]}</button>`;
+  if (!Store.canSync()) { el.innerHTML = `${theme}<span class="meta">Saved on this device</span>`; wireTheme(); return; }
+  el.innerHTML = theme + (S.user
     ? `<span class="meta" title="${esc(S.user.email || "")}">Synced</span><button class="link" id="sign-out">Sign out</button>`
-    : `<button class="btn" id="sign-in">Sign in to sync</button>`;
+    : `<button class="btn" id="sign-in">Sign in to sync</button>`);
+  wireTheme();
   $("#sign-in")?.addEventListener("click", () => Store.signIn().catch(() => toast("Sign-in didn't finish. Try again.")));
   $("#sign-out")?.addEventListener("click", () => Store.signOut());
 }
@@ -539,6 +555,9 @@ function route() {
   const h = location.hash.slice(1);
   if (h.startsWith("shelf-")) S.route = { name: "shelf", id: h.slice(6) };
   else if (h === "recent") S.route = { name: "recent" };
+  else if (h === "new") S.route = { name: "new" };
+  else if (h === "links") S.route = { name: "links" };
+  else if (h.startsWith("ytlinks=")) { receiveYtLinks(h.slice(8)); return; }
   else if (h === "search" && S.query) S.route = { name: "search" };
   else S.route = { name: "home" };
   render();
@@ -551,6 +570,8 @@ function render() {
   const r = S.route;
   if (r.name === "shelf") renderShelf(r.id);
   else if (r.name === "recent") renderRecent();
+  else if (r.name === "new") renderNew();
+  else if (r.name === "links") renderLinks();
   else if (r.name === "search") renderSearch();
   else renderHome();
   markActive();
@@ -860,6 +881,187 @@ async function addList(shelfId, text) {
   list.busy = false;
   if (S.list === list && S.route.name === "shelf") render();
   if (added) toast(`Added ${added} ${added === 1 ? "album" : "albums"} to ${shelfById(shelfId)?.name}`);
+}
+
+// ------------------------------------------------------------------ new releases
+
+const monthDay = (d) => new Date(d + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+const NEW = { data: null, loading: false, at: 0 };
+
+function newCard(a, target, note) {
+  const owned = allAlbums().find((x) => (a.deezerId && x.deezerId === a.deezerId) || (norm(x.title) === norm(a.title) && norm(x.artist) === norm(a.artist)));
+  remember([a]);
+  return `
+  <div class="album sug" data-dz="${keyOf(a)}">
+    <a class="cover" href="${esc(owned ? ytUrl(owned) : Catalog.ytSearchUrl(a))}" target="_blank" rel="noopener" title="Open in YouTube Music">
+      ${coverArt(a)}<span class="play" aria-hidden="true">▶</span>
+    </a>
+    <div class="album-title">${esc(a.title)}</div>
+    <div class="album-sub"><span class="artist">${esc(a.artist)}</span><span class="yr">${a.type === "ep" ? "EP" : ""}</span></div>
+    <div class="reason" title="${esc(note)}">${esc(note)}</div>
+    ${owned ? `<div class="meta on-shelf"><i class="dot" style="background:${esc(owned.shelf.color)}"></i>On ${esc(owned.shelf.name)}</div>` : `
+    <div class="add-row">
+      <select aria-label="Shelf to add ${esc(a.title)} to">${shelfOptions(target)}</select>
+      <button class="btn primary" data-add="${keyOf(a)}">Add</button>
+    </div>`}
+  </div>`;
+}
+
+function renderNew() {
+  view.innerHTML = `
+    <h1 class="page-title">New releases</h1>
+    <p class="note" style="margin-bottom:8px">Albums and EPs from the last 12 months, newest first.</p>
+    <section class="new-sec">
+      <h2 class="section-label">From artists on your shelves</h2>
+      <div class="grid" id="new-mine">${skeletons(6)}</div>
+    </section>
+    <section class="new-sec">
+      <h2 class="section-label">New from bands you might like</h2>
+      <p class="meta" style="margin-bottom:14px">Bands closely related to several of your artists come first</p>
+      <div class="grid" id="new-near">${skeletons(6)}</div>
+    </section>`;
+  loadNew();
+}
+
+async function loadNew() {
+  const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+  const artists = new Map(), shelfOf = new Map();
+  for (const a of allAlbums()) if (a.artistId && !artists.has(a.artistId)) { artists.set(a.artistId, a.artist); shelfOf.set(a.artistId, a.shelf.id); }
+  const byName = new Map([...artists].map(([id, n]) => [n, shelfOf.get(id)]));
+  const fill = (id, html, empty) => { const el = $(id); if (el && S.route.name === "new") el.innerHTML = html || `<div class="empty">${empty}</div>`; };
+  try {
+    const mine = await Catalog.newFrom(artists, since);
+    fill("#new-mine", mine.map((a) => newCard(a, shelfOf.get(a.artistId), `Released ${monthDay(a.released)}`)).join(""),
+      "None of your artists have released anything in the last 12 months.");
+    const near = (await Catalog.newNearby(artists, since)).slice(0, 24);
+    fill("#new-near", near.map((a) => newCard(a, byName.get(a.because[0]),
+      `Like ${a.because.slice(0, 2).join(" & ")}${a.because.length > 2 ? ` +${a.because.length - 2}` : ""} · ${monthDay(a.released)}`)).join(""),
+      "Nothing new from related bands right now.");
+  } catch (e) {
+    fill("#new-mine", "", esc(e.message));
+  }
+}
+
+// ------------------------------------------------------------------ exact album links, found by YouTube Music itself
+
+// Runs as a bookmark on music.youtube.com, in the person's own browser: it asks
+// YouTube Music's site for each album and returns the album pages to Crate.
+function crateLinksBookmark() {
+  const CRATE = "__CRATE__";
+  if (!/(^|\.)music\.youtube\.com$/.test(location.hostname)) { alert("Open music.youtube.com in this tab first, then click the Crate bookmark."); return; }
+  let raw = "";
+  try { raw = decodeURIComponent((location.hash.match(/crate=([^&]+)/) || [])[1] || ""); } catch (e) {}
+  if (!raw) raw = prompt("Paste the album list Crate copied for you (Cmd+V), then press OK:") || "";
+  let list;
+  try { list = JSON.parse(raw); } catch (e) { alert("That isn't Crate's album list. Go back to Crate and click Start again."); return; }
+  const box = document.createElement("div");
+  box.style.cssText = "position:fixed;z-index:2147483647;left:50%;top:24px;transform:translateX(-50%);background:#101216;color:#ece8e1;padding:14px 20px;border-radius:10px;font:15px/1.4 system-ui,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.5)";
+  document.body.appendChild(box);
+  const say = (t) => { box.textContent = t; };
+  const cfg = window.ytcfg;
+  if (!cfg || !cfg.get) { alert("YouTube Music hasn't finished loading. Wait a moment and click the bookmark again."); box.remove(); return; }
+  const key = cfg.get("INNERTUBE_API_KEY"), context = cfg.get("INNERTUBE_CONTEXT");
+  const norm = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s*[\(\[][^)\]]*[\)\]]/g, "").replace(/[^a-z0-9]+/g, "");
+  const textOf = (t) => (t && t.runs ? t.runs.map((r) => r.text).join("") : "");
+  async function albumsFor(query, params) {
+    const body = { context, query };
+    if (params) body.params = params;
+    const r = await fetch("/youtubei/v1/search?prettyPrint=false&key=" + key, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await r.json();
+    const hits = [];
+    (function walk(o) {
+      if (!o || typeof o !== "object") return;
+      const id = o.navigationEndpoint && o.navigationEndpoint.browseEndpoint && o.navigationEndpoint.browseEndpoint.browseId;
+      if (id && id.indexOf("MPREb_") === 0) {
+        const fc = o.flexColumns && o.flexColumns[0] && o.flexColumns[0].musicResponsiveListItemFlexColumnRenderer;
+        hits.push([id, o.text || textOf(o.title) || (fc ? textOf(fc.text) : ""), norm(JSON.stringify(o).slice(0, 4000))]);
+      }
+      for (const k in o) walk(o[k]);
+    })(d);
+    return hits;
+  }
+  const found = {};
+  (async () => {
+    for (let i = 0; i < list.length; i++) {
+      const [id, artist, title] = list[i];
+      say("Crate: looking up album " + (i + 1) + " of " + list.length + "…");
+      try {
+        let hits = await albumsFor(artist + " " + title, "EgWKAQIYAWoMEA4QChADEAQQCRAF");
+        if (!hits.length) hits = await albumsFor(artist + " " + title);
+        const t = norm(title), a = norm(artist);
+        const pick = hits.find((h) => norm(h[1]) === t && h[2].indexOf(a) >= 0) || hits.find((h) => norm(h[1]) === t) ||
+          hits.find((h) => h[1] && h[2].indexOf(a) >= 0 && (norm(h[1]).indexOf(t) >= 0 || t.indexOf(norm(h[1])) >= 0));
+        if (pick) found[id] = pick[0];
+      } catch (e) {}
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    say("Crate: found " + Object.keys(found).length + " of " + list.length + " albums. Taking you back…");
+    setTimeout(() => { location.href = CRATE + "#ytlinks=" + encodeURIComponent(JSON.stringify(found)); }, 1500);
+  })();
+}
+
+function bookmarkHref() {
+  const home = location.origin + location.pathname;
+  return "javascript:" + encodeURIComponent("(" + crateLinksBookmark.toString().replace("__CRATE__", home) + ")()");
+}
+
+function needingLinks() {
+  return allAlbums().filter((a) => !a.ytUrl).map((a) => [a.id, a.artist, a.title]);
+}
+
+function renderLinks() {
+  const todo = needingLinks();
+  const total = allAlbums().length;
+  view.innerHTML = `
+    <h1 class="page-title">Album links</h1>
+    <p class="note">${total - todo.length} of ${total} albums open straight to their album page. The rest open a search.
+      This finds the album pages for all of them at once, using YouTube Music's own website in your browser.</p>
+    <ol class="steps">
+      <li><b>Use Chrome on your Mac</b> (or any browser where music.youtube.com opens as a normal tab, not your YT Music app), signed in to Crate.</li>
+      <li>Show the bookmarks bar (<b>View → Always Show Bookmarks Bar</b>), then drag this button onto it. You only do this once:
+        <p><a class="btn primary bookmarklet" href="${esc(bookmarkHref())}" onclick="event.preventDefault(); return false;">Crate album links</a></p></li>
+      <li>Click <b>Start</b>. It copies your album list and opens YouTube Music in a new tab.
+        <p><button class="btn primary" id="links-start" ${todo.length ? "" : "disabled"}>Start${todo.length ? ` (${todo.length} albums)` : ""}</button></p></li>
+      <li>On the YouTube Music tab, click the <b>Crate album links</b> bookmark. If it asks for the list, press Cmd+V and OK.
+        It looks up each album, then brings you back here with the links saved.</li>
+    </ol>
+    <p class="meta">If an album isn't found, use its ⋯ menu to paste the link by hand.</p>`;
+  $("#links-start")?.addEventListener("click", async () => {
+    const list = JSON.stringify(needingLinks());
+    try { await navigator.clipboard.writeText(list); } catch {}
+    window.open("https://music.youtube.com/#crate=" + encodeURIComponent(list), "_blank", "noopener");
+  });
+}
+
+function receiveYtLinks(encoded) {
+  try {
+    const got = JSON.parse(decodeURIComponent(encoded));
+    const prev = JSON.parse(localStorage.getItem("crate:pendingLinks") || "{}");
+    localStorage.setItem("crate:pendingLinks", JSON.stringify({ ...prev, ...got }));
+  } catch {}
+  history.replaceState(null, "", location.pathname + "#links");
+  S.route = { name: "links" };
+  applyPendingYtLinks();
+  render();
+}
+
+let applyingLinks = false;
+async function applyPendingYtLinks() {
+  if (applyingLinks) return;
+  // Wait until the synced library is in place, so links land in the account and not just this browser.
+  if (Store.canSync() && Store.mode() !== "cloud") return;
+  let pending;
+  try { pending = JSON.parse(localStorage.getItem("crate:pendingLinks") || "{}"); } catch { return; }
+  const ids = Object.keys(pending).filter((id) => S.raw?.albums?.[id]);
+  if (!ids.length) return;
+  applyingLinks = true;
+  for (const id of ids) {
+    await write(() => Store.update("albums", id, { ytUrl: "https://music.youtube.com/browse/" + pending[id] }));
+    delete pending[id];
+  }
+  try { localStorage.setItem("crate:pendingLinks", JSON.stringify(pending)); } catch {}
+  applyingLinks = false;
+  toast(`Saved ${ids.length} album ${ids.length === 1 ? "link" : "links"}. Those covers now open the album page.`);
 }
 
 // ------------------------------------------------------------------ exact YouTube Music links (optional)

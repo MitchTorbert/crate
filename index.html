@@ -1,7 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
+<script>try { document.documentElement.dataset.theme = localStorage.getItem("crate:theme") || "dark"; } catch (e) {}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Crate</title>
 <meta name="description" content="My albums on shelves, by period of my life.">
@@ -22,7 +23,9 @@
     <a class="brand" href="#home">Crate</a>
     <nav>
       <a class="rail-link" href="#home" data-route="home">All shelves</a>
+      <a class="rail-link" href="#new" data-route="new">New releases</a>
       <a class="rail-link" href="#recent" data-route="recent">Recently added</a>
+      <a class="rail-link" href="#links" data-route="links">Album links</a>
     </nav>
     <div class="rail-label">Shelves</div>
     <nav id="shelf-nav"></nav>
