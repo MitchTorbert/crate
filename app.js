@@ -1019,7 +1019,7 @@ function renderLinks() {
     <ol class="steps">
       <li><b>Use Chrome on your Mac</b> (or any browser where music.youtube.com opens as a normal tab, not your YT Music app), signed in to Crate.</li>
       <li>Show the bookmarks bar (<b>View → Always Show Bookmarks Bar</b>), then drag this button onto it. You only do this once:
-        <p><a class="btn primary bookmarklet" href="${esc(bookmarkHref())}" onclick="event.preventDefault(); return false;">Crate album links</a></p></li>
+        <p><a class="btn primary bookmarklet" href="${esc(bookmarkHref())}" onclick="event.preventDefault(); return false;">⚙︎ Crate album links</a></p></li>
       <li>Click <b>Start</b>. It copies your album list and opens YouTube Music in a new tab.
         <p><button class="btn primary" id="links-start" ${todo.length ? "" : "disabled"}>Start${todo.length ? ` (${todo.length} albums)` : ""}</button></p></li>
       <li>On the YouTube Music tab, click the <b>Crate album links</b> bookmark. If it asks for the list, press Cmd+V and OK.
