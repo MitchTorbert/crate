@@ -585,9 +585,39 @@ function openMenu(btn, albumId) {
     <div class="label">Move to</div>
     ${S.lib.shelves.map((s) => `<button data-move="${s.id}" ${s.id === a.shelf.id ? "disabled" : ""}><i class="dot" style="background:${esc(s.color)}"></i>${esc(s.name)}${s.id === a.shelf.id ? " · here" : ""}</button>`).join("")}
     <hr>
+    <div class="label">YouTube Music link</div>
+    <div class="menu-note">${a.ytUrl ? "Opens the album page" : "Opens a search for the album"}</div>
+    <form class="yt-form" id="yt-form">
+      <input id="yt-input" placeholder="Paste the album's share link" autocomplete="off" spellcheck="false" aria-label="YouTube Music album link">
+      <button class="btn primary">Save</button>
+    </form>
+    ${navigator.clipboard?.readText ? `<button data-ytpaste="1">Paste link from clipboard</button>` : ""}
+    ${a.ytUrl ? `<button data-ytclear="1">Go back to opening a search</button>` : ""}
+    <hr>
     <button data-remove="1">Remove from library</button>`;
   placeMenu(btn, true);
-  menu.querySelector("button:not([disabled])")?.focus();
+  $("#yt-form").onsubmit = (e) => { e.preventDefault(); saveYtLink(a, $("#yt-input").value); };
+}
+
+/** Accepts YouTube Music / YouTube album links; returns a clean music.youtube.com URL or "". */
+function cleanYtLink(text) {
+  const m = String(text).match(/https?:\/\/[^\s]+/);
+  if (!m) return "";
+  let u;
+  try { u = new URL(m[0]); } catch { return ""; }
+  if (!/(^|\.)youtube\.com$|^youtu\.be$/.test(u.hostname)) return "";
+  const list = u.searchParams.get("list");
+  if (list) return `https://music.youtube.com/playlist?list=${encodeURIComponent(list)}`;
+  const browse = u.pathname.match(/^\/browse\/([\w-]+)/);
+  if (browse) return `https://music.youtube.com/browse/${browse[1]}`;
+  return "";
+}
+
+async function saveYtLink(a, text) {
+  const url = cleanYtLink(text);
+  if (!url) { toast("That isn't an album link. In YouTube Music, open the album, tap Share, then Copy link."); return; }
+  closeMenu();
+  if (await write(() => Store.update("albums", a.id, { ytUrl: url }))) toast(`${a.title} now opens its album page`);
 }
 
 function openColorMenu(btn, shelfId) {
@@ -657,8 +687,15 @@ menu.addEventListener("click", async (e) => {
     return;
   }
   const a = allAlbums().find((x) => x.id === menuFor.id);
+  if (b.closest("#yt-form")) return;
+  if (b.dataset.ytpaste) {
+    try { saveYtLink(a, await navigator.clipboard.readText()); }
+    catch { toast("Couldn't read the clipboard. Paste the link into the box instead."); }
+    return;
+  }
   closeMenu();
   if (!a) return;
+  if (b.dataset.ytclear) { write(() => Store.update("albums", a.id, { ytUrl: "" })); return; }
   if (b.dataset.move) {
     if (await moveAlbum(a.id, b.dataset.move, 0)) toast(`Moved to ${shelfById(b.dataset.move).name}`, { label: "Undo", run: () => restoreAlbum(a) });
   } else if (b.dataset.remove) {

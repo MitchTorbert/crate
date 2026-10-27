@@ -343,3 +343,9 @@ textarea.note-edit { width: 100%; max-width: 60ch; background: var(--raise); col
 .list-report li::before { display: inline-block; width: 1.4em; font-weight: 700; }
 .list-report .ok::before { content: "✓"; color: var(--accent); }
 .list-report .miss::before { content: "×"; color: var(--danger); }
+
+.menu-note { padding: 0 10px 6px; font-size: 13px; color: var(--muted); }
+.yt-form { display: flex; gap: 6px; padding: 0 10px 6px; }
+.yt-form input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line); color: var(--fg); font-size: 13px; }
+.menu { max-width: min(340px, calc(100vw - 32px)); }
+.menu .yt-form .btn { width: auto; flex: none; text-align: center; padding: 6px 12px; }
