@@ -40,11 +40,15 @@ function rebuild() {
   };
 }
 
+const liveOpen = () => [...document.querySelectorAll("form.live .live-list")].some((l) => !l.hidden);
+
 function onData(raw) {
   S.raw = raw;
   rebuild();
   applyPendingYtLinks();
   renderRail();
+  // Leave an open search dropdown alone so several albums can be added in a row.
+  if (liveOpen()) { S.dirty = true; return; }
   const f = document.activeElement;
   if (f && view.contains(f) && /INPUT|TEXTAREA|SELECT/.test(f.tagName)) return;
   if (dragId || !menu.hidden) return;
@@ -184,7 +188,16 @@ function renderAccount() {
   $("#sign-out")?.addEventListener("click", () => Store.signOut());
 }
 
+function choreCount() {
+  const c = S.raw?.meta?.chores;
+  if (!c?.items) return 0;
+  return choreItems().filter((i) => CHORES.singles || i.count > 1).length;
+}
+
 function markActive() {
+  const n = choreCount();
+  const el = $("#chores-count");
+  if (el) el.textContent = n ? n : "";
   const r = S.route;
   document.querySelectorAll(".rail-link").forEach((a) => {
     a.classList.toggle("active", (a.dataset.route && a.dataset.route === r.name) || (r.name === "shelf" && a.dataset.shelf === r.id));
@@ -371,6 +384,12 @@ async function liveAdd(form, a) {
   const btn = form.querySelector(`[data-live-add="${keyOf(a)}"]`);
   if (btn) btn.outerHTML = `<span class="meta">Added</span>`;
   S.lastShelf = shelfId;
+  form.querySelector(".live-input").focus({ preventScroll: true });
+}
+
+// Catch up on changes that arrived while a dropdown was open.
+function afterLiveClosed() {
+  if (S.dirty && !liveOpen()) { S.dirty = false; render(); }
 }
 
 function closeLive(form) {
@@ -385,6 +404,7 @@ document.addEventListener("input", (e) => {
 document.addEventListener("click", async (e) => {
   const form = e.target.closest("form.live");
   document.querySelectorAll("form.live .live-list:not([hidden])").forEach((l) => { if (!l.parentElement.contains(e.target)) l.hidden = true; });
+  afterLiveClosed();
   if (!form) return;
   const add = e.target.closest("[data-live-add]");
   if (add) { add.disabled = true; await liveAdd(form, found.get(add.dataset.liveAdd)); return; }
@@ -408,7 +428,7 @@ document.addEventListener("submit", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { document.querySelectorAll("form.live .live-list").forEach((l) => (l.hidden = true)); closeMenu(); }
+  if (e.key === "Escape") { document.querySelectorAll("form.live .live-list").forEach((l) => (l.hidden = true)); closeMenu(); afterLiveClosed(); }
 });
 
 function goSearch(q) {
@@ -557,6 +577,7 @@ function route() {
   else if (h === "recent") S.route = { name: "recent" };
   else if (h === "new") S.route = { name: "new" };
   else if (h === "links") S.route = { name: "links" };
+  else if (h === "chores") S.route = { name: "chores" };
   else if (h.startsWith("ytlinks=")) { receiveYtLinks(h.slice(8)); return; }
   else if (h === "search" && S.query) S.route = { name: "search" };
   else S.route = { name: "home" };
@@ -572,6 +593,7 @@ function render() {
   else if (r.name === "recent") renderRecent();
   else if (r.name === "new") renderNew();
   else if (r.name === "links") renderLinks();
+  else if (r.name === "chores") renderChores();
   else if (r.name === "search") renderSearch();
   else renderHome();
   markActive();
@@ -941,6 +963,164 @@ async function loadNew() {
     fill("#new-mine", "", esc(e.message));
   }
 }
+
+// ------------------------------------------------------------------ sorting chores: liked albums not on a shelf yet
+
+const CHORES = { covers: new Map(), found: new Map(), busy: "", shown: 40, singles: false };
+
+/** Pull every liked video from YouTube and group the YouTube Music tracks by album. */
+async function fetchYouTubeLikes(token) {
+  const albums = new Map();
+  let page = "", n = 0, rank = 0;
+  do {
+    const p = new URLSearchParams({ myRating: "like", part: "snippet", maxResults: "50" });
+    if (page) p.set("pageToken", page);
+    const res = await fetch("https://www.googleapis.com/youtube/v3/videos?" + p, { headers: { Authorization: "Bearer " + token } });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const reason = body?.error?.errors?.[0]?.reason || "";
+      throw new Error(reason === "accessNotConfigured" || reason === "SERVICE_DISABLED"
+        ? "The YouTube Data API is turned off for your Crate project. Turn it on in Google Cloud and try again."
+        : `YouTube didn't share your likes (error ${res.status}).`);
+    }
+    const d = await res.json();
+    for (const v of d.items || []) {
+      rank++;
+      // Tracks from YouTube Music carry "Provided to YouTube by …", then "Song · Artist", then the album name.
+      const lines = String(v.snippet?.description || "").split("\n").map((l) => l.trim()).filter(Boolean);
+      if (!/^Provided to YouTube by/i.test(lines[0] || "") || lines.length < 3) continue;
+      const [song, ...artists] = lines[1].split(" · ");
+      const album = lines[2];
+      const artist = (v.snippet.channelTitle || "").replace(/ - Topic$/, "") || artists[0] || "";
+      if (!album || /^℗|^©|^Released on/.test(album)) continue;
+      const k = norm(album) + "|" + norm(artist);
+      const e = albums.get(k) || { k, title: album, artist, count: 0, songs: [], recent: rank };
+      e.count++;
+      if (e.songs.length < 3) e.songs.push(song);
+      albums.set(k, e);
+    }
+    page = d.nextPageToken || "";
+    CHORES.busy = `Reading your likes… ${rank} songs so far`;
+    const el = $("#chores-status"); if (el) el.textContent = CHORES.busy;
+  } while (page && ++n < 80);
+  return { albums: [...albums.values()], liked: rank };
+}
+
+function choreItems() {
+  const c = S.raw?.meta?.chores;
+  if (!c?.items) return [];
+  const skipped = new Set(c.skipped || []);
+  const owned = new Set(allAlbums().map((a) => norm(a.title) + "|" + norm(a.artist)));
+  return c.items.filter((i) => !skipped.has(i.k) && !owned.has(i.k));
+}
+
+async function refreshChores() {
+  CHORES.busy = "Waiting for Google sign-in…";
+  render();
+  try {
+    const token = await Store.youtubeToken();
+    if (!token) throw new Error("Google didn't grant access to your YouTube likes.");
+    const { albums, liked } = await fetchYouTubeLikes(token);
+    const items = albums.sort((a, b) => b.count - a.count || a.recent - b.recent).slice(0, 400);
+    const prev = S.raw?.meta?.chores || {};
+    await Store.set("meta", "chores", { items, skipped: prev.skipped || [], updatedAt: now(), liked });
+    CHORES.busy = "";
+    toast(`Read ${liked} liked songs from ${items.length} albums`);
+  } catch (e) {
+    CHORES.busy = "";
+    const msg = /popup-closed|cancelled/.test(e.code || "") ? "Sign-in was closed before it finished." : e.message;
+    toast(msg || "Couldn't read your YouTube likes.");
+  }
+  render();
+}
+
+function guessShelfFor(i) {
+  const a = norm(i.artist);
+  for (const s of S.lib.shelves) if (s.albums.some((x) => norm(x.artist) === a)) return s.id;
+  return "";
+}
+
+function renderChores() {
+  const c = S.raw?.meta?.chores;
+  const all = choreItems();
+  const items = all.filter((i) => CHORES.singles || i.count > 1);
+  const when = c?.updatedAt ? ago(c.updatedAt).toLowerCase() : "";
+  view.innerHTML = `
+    <h1 class="page-title">Sorting chores</h1>
+    <p class="note">Albums you've liked songs from on YouTube Music that aren't on a shelf yet, most-liked first.</p>
+    <div class="chores-bar">
+      ${Store.canSync() && S.user
+        ? `<button class="btn primary" id="chores-refresh" ${CHORES.busy ? "disabled" : ""}>${c ? "Check YouTube Music again" : "Connect YouTube Music"}</button>`
+        : `<span class="meta">Sign in to Crate first</span>`}
+      <span class="meta" id="chores-status">${esc(CHORES.busy || (c ? `Checked ${when} · ${c.liked} liked songs` : ""))}</span>
+      ${c ? `<label class="meta"><input type="checkbox" id="chores-singles" ${CHORES.singles ? "checked" : ""}> Include albums with one liked song</label>` : ""}
+    </div>
+    ${!c ? `<div class="empty" style="margin-top:20px">Connect YouTube Music to see which albums you've been liking. Crate only reads your likes; it can't change anything in your account.</div>`
+      : !items.length ? `<div class="empty" style="margin-top:20px">All caught up. Every album you've liked songs from is on a shelf${all.length ? ", apart from ones with a single liked song" : ""}.</div>`
+      : `<div class="inbox-list">${items.slice(0, CHORES.shown).map((i) => `
+        <div class="inbox-row" data-k="${esc(i.k)}">
+          <a class="ib-cover" href="${esc(Catalog.ytSearchUrl(i))}" target="_blank" rel="noopener" title="Open in YouTube Music">
+            ${CHORES.covers.get(i.k) ? `<img src="${esc(CHORES.covers.get(i.k))}" alt="">` : `<span class="mini burned"><span class="disc"></span></span>`}
+          </a>
+          <div style="min-width:0">
+            <div class="t">${esc(i.title)}</div><div class="s">${esc(i.artist)}</div>
+            <div class="meta">${i.count} liked ${i.count === 1 ? "song" : "songs"} · ${esc(i.songs.join(", "))}${i.count > i.songs.length ? "…" : ""}</div>
+          </div>
+          <div class="ib-actions">
+            <select aria-label="Shelf for ${esc(i.title)}"><option value="">Pick a shelf…</option>${shelfOptions(guessShelfFor(i))}</select>
+            <button class="btn primary" data-chore="add">Shelve</button>
+            <button class="btn" data-chore="skip">Skip</button>
+          </div>
+        </div>`).join("")}</div>
+        ${items.length > CHORES.shown ? `<button class="btn" data-chore="more" style="margin-top:16px">Show more</button>` : ""}`}`;
+  $("#chores-refresh")?.addEventListener("click", refreshChores);
+  const sg = $("#chores-singles");
+  if (sg) sg.onchange = () => { CHORES.singles = sg.checked; render(); };
+  loadChoreCovers(items.slice(0, CHORES.shown));
+}
+
+let coverJob = 0;
+async function loadChoreCovers(items) {
+  const job = ++coverJob;
+  for (const i of items) {
+    if (job !== coverJob || S.route.name !== "chores") return;
+    if (CHORES.covers.has(i.k)) continue;
+    const a = await Catalog.find(i.artist, i.title).catch(() => null);
+    CHORES.covers.set(i.k, a?.cover || "");
+    if (a) CHORES.found.set(i.k, a);
+    if (a?.cover) {
+      const img = view.querySelector(`.inbox-row[data-k="${CSS.escape(i.k)}"] .ib-cover`);
+      if (img) img.innerHTML = `<img src="${esc(a.cover)}" alt="">`;
+    }
+  }
+}
+
+view.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-chore]");
+  if (!b) return;
+  if (b.dataset.chore === "more") { CHORES.shown += 40; render(); return; }
+  const row = b.closest(".inbox-row");
+  const k = row.dataset.k;
+  const c = S.raw.meta.chores;
+  const item = c.items.find((x) => x.k === k);
+  if (!item) return;
+  if (b.dataset.chore === "add") {
+    const shelfId = row.querySelector("select").value;
+    if (!shelfId) { toast("Pick a shelf first."); row.querySelector("select").focus(); return; }
+    b.disabled = true; b.textContent = "…";
+    // Reuse the match the cover lookup already made; otherwise look it up now.
+    coverJob++;
+    const found = CHORES.found.get(k) || await Catalog.find(item.artist, item.title).catch(() => null);
+    const id = await addAlbum(found ? { ...found } : { title: item.title, artist: item.artist }, shelfId);
+    if (id) { row.remove(); addedToast(found?.title || item.title, shelfId, id); }
+    else { b.disabled = false; b.textContent = "Shelve"; }
+  } else if (b.dataset.chore === "skip") {
+    row.remove();
+    const skipped = [...new Set([...(c.skipped || []), k])];
+    await write(() => Store.update("meta", "chores", { skipped }));
+    toast(`Skipped ${item.title}`, { label: "Undo", run: () => write(() => Store.update("meta", "chores", { skipped: skipped.filter((x) => x !== k) })) });
+  }
+});
 
 // ------------------------------------------------------------------ exact album links, found by YouTube Music itself
 

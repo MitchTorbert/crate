@@ -131,6 +131,21 @@ const Store = (() => {
       }
     },
     signOut: () => firebase.auth().signOut(),
+    /**
+     * A short-lived, read-only YouTube token. Uses a separate sign-in so the person can
+     * pick whichever Google account their YouTube Music is on, without changing who is
+     * signed in to Crate.
+     */
+    async youtubeToken() {
+      const app = firebase.apps.find((a) => a.name === "youtube") || firebase.initializeApp(window.CRATE_CONFIG.firebase, "youtube");
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.addScope("https://www.googleapis.com/auth/youtube.readonly");
+      provider.setCustomParameters({ prompt: "select_account" });
+      const res = await app.auth().signInWithPopup(provider);
+      const token = res.credential?.accessToken;
+      app.auth().signOut().catch(() => {});
+      return token;
+    },
     mode: () => mode,
     set, update, remove,
   };
