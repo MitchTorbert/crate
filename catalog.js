@@ -55,7 +55,9 @@ const Catalog = (() => {
     return p;
   }
 
-  const norm = (s) => String(s || "").toLowerCase()
+  // Fold accents so "jose gonzalez" matches "José González".
+  const fold = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const norm = (s) => fold(s).toLowerCase()
     .replace(/\s*[\(\[][^)\]]*(deluxe|edition|remaster|anniversary|expanded|bonus|explicit|reissue|version)[^)\]]*[\)\]]/g, "")
     .replace(/[^a-z0-9]+/g, "");
   const clean = (t) => String(t || "").replace(/\s*[\(\[][^)\]]*(deluxe|edition|remaster|anniversary|expanded|bonus|explicit|reissue)[^)\]]*[\)\]]/gi, "").trim() || t;
@@ -71,18 +73,126 @@ const Catalog = (() => {
     };
   }
 
-  async function search(q, limit = 20) {
+  // ---------------------------------------------------------------- fuzzy matching
+
+  function bigrams(s) {
+    const out = new Map();
+    for (let i = 0; i < s.length - 1; i++) { const g = s.slice(i, i + 2); out.set(g, (out.get(g) || 0) + 1); }
+    return out;
+  }
+  /** 0..1 likeness of two names, ignoring case, accents and punctuation. */
+  function sim(a, b) {
+    a = norm(a); b = norm(b);
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    if (a.length > 3 && b.length > 3 && (a.includes(b) || b.includes(a))) return 0.9;
+    const A = bigrams(a), B = bigrams(b);
+    let both = 0;
+    for (const [g, n] of A) both += Math.min(n, B.get(g) || 0);
+    return (2 * both) / (Math.max(1, a.length - 1) + Math.max(1, b.length - 1));
+  }
+  const words = (s) => fold(s).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  /** Share of the typed words found in the candidate, allowing small typos. */
+  function coverage(q, a) {
+    const qw = words(q), cw = words(`${a.artist} ${a.title} ${a.viaTrack || ""}`);
+    if (!qw.length) return 0;
+    let hit = 0;
+    for (const w of qw) if (cw.some((c) => c === w || (w.length > 3 && (c.startsWith(w) || sim(c, w) >= 0.8)))) hit++;
+    return hit / qw.length;
+  }
+  function splitTyped(q) {
+    const m = q.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+    return m ? { artist: m[1].trim(), title: m[2].trim() } : null;
+  }
+
+  // ---------------------------------------------------------------- search sources
+
+  const itunesSeen = new Map();
+  async function itunes(term, limit = 15) {
+    if (itunesSeen.has(term)) return itunesSeen.get(term);
+    const p = new URLSearchParams({ term, entity: "album", limit: String(limit), country: "US" });
+    const res = await fetch("https://itunes.apple.com/search?" + p).catch(() => null);
+    const d = res?.ok ? await res.json().catch(() => null) : null;
+    const out = (d?.results || [])
+      .filter((r) => r.collectionName && !(/ - Single$/.test(r.collectionName) && (r.trackCount || 0) < 4))
+      .map((r) => ({
+        itunesId: r.collectionId, deezerId: null, artistId: null,
+        title: clean(r.collectionName.replace(/ - (Single|EP)$/, "")), artist: r.artistName,
+        year: Number(String(r.releaseDate || "").slice(0, 4)) || null,
+        cover: String(r.artworkUrl100 || "").replace("100x100bb", "600x600bb"), type: "album", fans: 0,
+      }));
+    itunesSeen.set(term, out);
+    return out;
+  }
+
+  async function deezerAlbums(q) {
     const d = await call("/search/album", { q, limit: 40 }, { cache: false });
-    const seen = new Set(), out = [];
-    for (const a of d?.data || []) {
-      if (a.record_type === "single" && (a.nb_tracks || 1) < 4) continue;
-      const k = norm(a.title) + "|" + a.artist?.id;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push(album(a));
+    return (d?.data || []).filter((a) => !(a.record_type === "single" && (a.nb_tracks || 1) < 4)).map((a) => album(a));
+  }
+
+  // Songs whose names match: offer the album each one is on.
+  async function deezerTrackAlbums(q) {
+    const d = await call("/search", { q, limit: 15 }, { cache: false });
+    return (d?.data || []).filter((t) => t.album).map((t) => ({
+      deezerId: t.album.id, title: clean(t.album.title), artist: t.artist?.name || "", artistId: t.artist?.id ?? null,
+      year: null, cover: t.album.cover_big || t.album.cover_medium || "", type: "album", fans: 0, viaTrack: t.title,
+    }));
+  }
+
+  // "Artist - Album": find the artist, then look through their albums.
+  async function byArtist(artistText, titleText) {
+    const d = await call("/search/artist", { q: artistText, limit: 5 });
+    const best = (d?.data || []).map((a) => [sim(a.name, artistText), a]).sort((x, y) => y[0] - x[0])[0];
+    if (!best || best[0] < 0.75) return [];
+    const albums = await artistAlbums(best[1].id);
+    return titleText ? albums.filter((a) => sim(a.title, titleText) >= 0.5 || coverage(titleText, { ...a, artist: "" }) >= 0.6) : albums;
+  }
+
+  async function search(q, limit = 20) {
+    const typed = splitTyped(q);
+    const plain = fold(q).replace(/\s+[-–—]\s+/g, " ").replace(/(\w)-(\w)/g, "$1 $2").trim();
+    const jobs = [deezerAlbums(plain), deezerTrackAlbums(plain)];
+    if (typed) jobs.push(byArtist(typed.artist, typed.title));
+    let pool = (await Promise.all(jobs.map((j) => j.catch(() => [])))).flat();
+    const score = (a) => coverage(q, a) + (typed ? (sim(a.artist, typed.artist) + sim(a.title, typed.title)) / 4 : 0) - (a.viaTrack ? 0.05 : 0);
+    // Apple's catalog is more forgiving with spelling; ask it when Deezer has nothing convincing.
+    if (!pool.some((a) => coverage(q, a) >= 0.99)) pool = pool.concat(await itunes(plain).catch(() => []));
+    const ranked = pool.map((a) => [score(a), a]).filter(([s]) => s >= 0.5).sort((x, y) => y[0] - x[0]);
+    const seen = new Map(), out = [];
+    for (const [, a] of ranked) {
+      const k = norm(a.title) + "|" + norm(a.artist);
+      const prev = seen.get(k);
+      if (prev) { if (!prev.deezerId && a.deezerId) Object.assign(prev, { deezerId: a.deezerId, artistId: a.artistId }); continue; }
+      const item = { ...a };
+      seen.set(k, item);
+      out.push(item);
       if (out.length >= limit) break;
     }
     return out;
+  }
+
+  /** Best single match for an artist and album name, for adding a whole list at once. */
+  async function find(artist, title) {
+    const results = await search(`${artist} - ${title}`, 12);
+    let best = null, bestScore = 0;
+    for (const a of results) {
+      const as = sim(a.artist, artist);
+      const ts = Math.max(sim(a.title, title), a.viaTrack ? sim(a.viaTrack, title) * 0.95 : 0);
+      if (as < 0.7 || ts < 0.7) continue;
+      const s = as + ts + (a.viaTrack ? 0 : 0.1);
+      if (s > bestScore) { best = a; bestScore = s; }
+    }
+    return best;
+  }
+
+  /** Fill in catalog ids for an album found only on Apple, so suggestions work for it. */
+  async function toDeezer(a) {
+    const albums = await byArtist(a.artist, "").catch(() => []);
+    const match = albums.map((x) => [sim(x.title, a.title), x]).sort((x, y) => y[0] - x[0])[0];
+    if (match && match[0] >= 0.8) return { ...match[1], cover: match[1].cover || a.cover };
+    const d = await call("/search/artist", { q: a.artist, limit: 3 });
+    const art = (d?.data || []).find((x) => sim(x.name, a.artist) >= 0.85);
+    return art ? { ...a, artistId: art.id } : a;
   }
 
   async function detail(id) {
@@ -171,5 +281,5 @@ const Catalog = (() => {
     return "";
   }
 
-  return { search, detail, artistAlbums, related, suggest, norm, ytSearchUrl, resolveYouTube, rng, shuffle };
+  return { search, find, toDeezer, sim, detail, artistAlbums, related, suggest, norm, ytSearchUrl, resolveYouTube, rng, shuffle };
 })();

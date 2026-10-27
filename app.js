@@ -65,6 +65,7 @@ function posAt(list, index) {
 
 async function addAlbum(a, shelfId) {
   const s = shelfById(shelfId);
+  if (!a.deezerId && a.itunesId) a = await Catalog.toDeezer(a).catch(() => a);
   if (a.deezerId && (!a.year || !a.cover)) {
     const d = await Catalog.detail(a.deezerId).catch(() => null);
     if (d) a = { ...d, ...Object.fromEntries(Object.entries(a).filter(([, v]) => v)) , year: a.year || d.year, cover: a.cover || d.cover };
@@ -214,11 +215,13 @@ const shelfOptions = (selected) =>
 
 // Suggestions and search results share one card; data lives in a lookup by catalog id.
 const found = new Map();
-function remember(list) { for (const a of list) found.set(a.deezerId, a); return list; }
+const keyOf = (a) => (a.deezerId ? String(a.deezerId) : "it" + a.itunesId);
+function remember(list) { for (const a of list) found.set(keyOf(a), a); return list; }
+const foundNote = (a) => (a.viaTrack ? `Has “${a.viaTrack}”` : a.reason || "");
 
 function suggestionCard(a, target) {
   return `
-  <div class="album sug" data-dz="${a.deezerId}">
+  <div class="album sug" data-dz="${keyOf(a)}">
     <a class="cover" href="${esc(Catalog.ytSearchUrl(a))}" target="_blank" rel="noopener" title="Preview in YouTube Music">
       ${coverArt(a)}
       <span class="play" aria-hidden="true">▶</span>
@@ -226,10 +229,10 @@ function suggestionCard(a, target) {
     ${a.reason ? `<button class="dismiss" data-dismiss="${a.deezerId}" aria-label="Not for me: hide ${esc(a.title)}" title="Not for me">×</button>` : ""}
     <div class="album-title">${esc(a.title)}</div>
     <div class="album-sub"><span class="artist">${esc(a.artist)}</span><span class="yr">${a.year ?? ""}</span></div>
-    ${a.reason ? `<div class="reason" title="${esc(a.reason)}">${esc(a.reason)}</div>` : ""}
+    ${foundNote(a) ? `<div class="reason" title="${esc(foundNote(a))}">${esc(foundNote(a))}</div>` : ""}
     <div class="add-row">
       <select aria-label="Shelf to add ${esc(a.title)} to">${shelfOptions(target)}</select>
-      <button class="btn primary" data-add="${a.deezerId}">Add</button>
+      <button class="btn primary" data-add="${keyOf(a)}">Add</button>
     </div>
   </div>`;
 }
@@ -333,9 +336,9 @@ function renderLiveList(form, results, q) {
       return `
       <div class="live-item">
         <img src="${esc(a.cover)}" alt="" loading="lazy">
-        <span class="live-text"><b>${esc(a.title)}</b><small>${esc(a.artist)}${a.year ? " · " + a.year : ""}</small></span>
+        <span class="live-text"><b>${esc(a.title)}</b><small>${esc(a.artist)}${a.year ? " · " + a.year : ""}${a.viaTrack ? ` · has “${esc(a.viaTrack)}”` : ""}</small></span>
         <a class="link" href="${esc(Catalog.ytSearchUrl(a))}" target="_blank" rel="noopener" title="Listen first in YouTube Music">Listen</a>
-        ${have ? `<span class="meta">Added</span>` : `<button type="button" class="btn primary" data-live-add="${a.deezerId}">Add</button>`}
+        ${have ? `<span class="meta">Added</span>` : `<button type="button" class="btn primary" data-live-add="${keyOf(a)}">Add</button>`}
       </div>`;
     }).join("") || `<div class="live-hint">No albums found for “${esc(q)}”.</div>`}
     ${typed ? `<button type="button" class="live-manual" data-live-manual="1">Not listed? Add “${esc(typed.title)}” by ${esc(typed.artist)} as a blank CD</button>`
@@ -349,7 +352,7 @@ async function liveAdd(form, a) {
   const id = await addAlbum(a, shelfId);
   if (!id) return;
   addedToast(a.title, shelfId, id);
-  const btn = form.querySelector(`[data-live-add="${a.deezerId}"]`);
+  const btn = form.querySelector(`[data-live-add="${keyOf(a)}"]`);
   if (btn) btn.outerHTML = `<span class="meta">Added</span>`;
   S.lastShelf = shelfId;
 }
@@ -368,7 +371,7 @@ document.addEventListener("click", async (e) => {
   document.querySelectorAll("form.live .live-list:not([hidden])").forEach((l) => { if (!l.parentElement.contains(e.target)) l.hidden = true; });
   if (!form) return;
   const add = e.target.closest("[data-live-add]");
-  if (add) { add.disabled = true; await liveAdd(form, found.get(Number(add.dataset.liveAdd))); return; }
+  if (add) { add.disabled = true; await liveAdd(form, found.get(add.dataset.liveAdd)); return; }
   if (e.target.closest("[data-live-manual]")) {
     const typed = parseTyped(form.querySelector(".live-input").value);
     if (typed) await liveAdd(form, typed);
@@ -464,6 +467,7 @@ function renderShelf(id) {
         ${swatch(s)}
         <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
         <div class="head-actions">
+          <button class="btn" data-act="list">Add a list</button>
           <button class="btn" data-act="rename">Rename</button>
           <button class="btn" data-act="note">${s.note ? "Edit note" : "Add a note"}</button>
           <button class="btn" data-act="up" ${i === 0 ? "disabled" : ""} aria-label="Move shelf up">↑</button>
@@ -472,6 +476,7 @@ function renderShelf(id) {
         </div>
         ${s.note ? `<p class="note">${esc(s.note)}</p>` : ""}
       </div>
+      ${S.list?.shelfId === s.id ? listForm(s) : ""}
       ${s.albums.length
         ? `<div class="grid" id="shelf-grid">${s.albums.map((a) => albumCard(a, { draggable: true })).join("")}</div>
            <p class="meta" style="margin-top:18px">Drag covers to reorder, or drop one on a shelf in the sidebar to move it.</p>`
@@ -479,6 +484,25 @@ function renderShelf(id) {
       ${suggestBlock(s, `Suggested for ${s.name}`, 18, "grid")}
     </section>`;
   fillSuggestions();
+  if (S.list?.shelfId === s.id) wireListForm(s);
+}
+
+function listForm(s) {
+  return `
+    <form id="list-form" class="list-form">
+      <label for="list-input" class="meta">One album per line, written Artist - Album. Separate several albums by the same artist with commas.</label>
+      <textarea id="list-input" rows="6" placeholder="Local Natives - Gorilla Manor, Sunlit Youth&#10;José González - Veneer" ${S.list.busy ? "disabled" : ""}></textarea>
+      <div class="list-actions">
+        <button class="btn primary" ${S.list.busy ? "disabled" : ""}>${S.list.busy ? "Adding…" : `Add to ${esc(s.name)}`}</button>
+        <button type="button" class="btn" id="list-cancel">Close</button>
+      </div>
+      <ul id="list-report" class="list-report">${S.list.report}</ul>
+    </form>`;
+}
+
+function wireListForm(s) {
+  $("#list-cancel").onclick = () => { S.list = null; render(); };
+  $("#list-form").onsubmit = (e) => { e.preventDefault(); if (!S.list.busy) addList(s.id, $("#list-input").value); };
 }
 
 function renderRecent() {
@@ -665,7 +689,7 @@ view.addEventListener("click", async (e) => {
   if (add) {
     const card = add.closest(".sug");
     const shelfId = card.querySelector("select").value;
-    const a = found.get(Number(add.dataset.add));
+    const a = found.get(add.dataset.add);
     if (!a) return;
     add.disabled = true; add.textContent = "…";
     const id = await addAlbum(a, shelfId);
@@ -727,6 +751,10 @@ async function shelfAction(act) {
       await write(() => Store.update("shelves", s.id, { note }));
       render();
     };
+  } else if (act === "list") {
+    if (!S.list || S.list.shelfId !== s.id) S.list = { shelfId: s.id, report: "", busy: false };
+    render();
+    $("#list-input")?.focus();
   } else if (act === "up" || act === "down") {
     const list = S.lib.shelves;
     const i = list.indexOf(s), j = act === "up" ? i - 1 : i + 1;
@@ -745,6 +773,56 @@ async function shelfAction(act) {
       setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = "Delete shelf"; } }, 4000);
     }
   }
+}
+
+// ------------------------------------------------------------------ add a whole list
+
+function parseList(text) {
+  const out = [];
+  for (let line of text.split(/\n+/)) {
+    line = line.replace(/^\s*([•*·▪◦-]|\d+[.)])\s*/, "").trim();
+    const m = line.match(/^(.+?)\s+[-–—:]\s+(.+)$/);
+    if (!m) { if (line) out.push({ line, artist: "", titles: [] }); continue; }
+    out.push({ line, artist: m[1].trim(), titles: [m[2].trim()] });
+  }
+  return out;
+}
+
+async function addList(shelfId, text) {
+  const items = parseList(text);
+  if (!items.length) { $("#list-input").focus(); return; }
+  const list = S.list;
+  list.busy = true; list.report = "";
+  render();
+  const line = (cls, html) => {
+    list.report += `<li class="${cls}">${html}</li>`;
+    const r = $("#list-report");
+    if (r && S.list === list) r.innerHTML = list.report;
+  };
+  let added = 0;
+  for (const it of items) {
+    if (!it.artist) { line("miss", `Couldn't read “${esc(it.line)}”. Write it as Artist - Album.`); continue; }
+    // "Gorilla Manor, Sunlit Youth": try the whole thing first, then each part.
+    let jobs = [it.titles[0]];
+    let first = await Catalog.find(it.artist, jobs[0]).catch(() => null);
+    // Keep a comma title only when it is one album's exact name ("Brother, Sister").
+    if (/,/.test(jobs[0]) && !(first && Catalog.sim(first.title, jobs[0]) >= 0.97)) {
+      jobs = jobs[0].split(/\s*,\s*/).filter(Boolean);
+      first = null;
+    }
+    for (const title of jobs) {
+      const a = first && jobs.length === 1 ? first : await Catalog.find(it.artist, title).catch(() => null);
+      if (!a) { line("miss", `Couldn't find <b>${esc(title)}</b> by ${esc(it.artist)}. Try the search box with a different spelling.`); continue; }
+      const id = await addAlbum({ ...a }, shelfId);
+      const note = a.viaTrack && Catalog.sim(a.viaTrack, title) > Catalog.sim(a.title, title)
+        ? ` (“${esc(title)}” is a song on this album)` : "";
+      if (id) { added++; line("ok", `Added <b>${esc(a.title)}</b> by ${esc(a.artist)}${note}`); }
+      else line("miss", `<b>${esc(a.title)}</b> by ${esc(a.artist)} is already in your library.`);
+    }
+  }
+  list.busy = false;
+  if (S.list === list && S.route.name === "shelf") render();
+  if (added) toast(`Added ${added} ${added === 1 ? "album" : "albums"} to ${shelfById(shelfId)?.name}`);
 }
 
 // ------------------------------------------------------------------ exact YouTube Music links (optional)
