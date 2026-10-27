@@ -1,0 +1,318 @@
+{
+ "shelves": {
+  "sd3dd0116": {
+   "name": "New favorites",
+   "note": "",
+   "order": 3
+  },
+  "s69e35864": {
+   "name": "High school metalcore",
+   "note": "",
+   "order": 0
+  },
+  "s455b82d2": {
+   "name": "Buttrock",
+   "note": "",
+   "order": 2
+  },
+  "swqird3yn": {
+   "color": "#c8344a",
+   "name": "Art school",
+   "note": "",
+   "order": 4
+  },
+  "se0727122": {
+   "name": "Early days",
+   "note": "",
+   "order": 1
+  }
+ },
+ "albums": {
+  "a78d9a880": {
+   "addedAt": 1793113991,
+   "artist": "Sleeping With Sirens",
+   "artistId": 389588,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/20b4ce8dc8ca9707daa02201ff663068/500x500-000000-80-0-0.jpg",
+   "deezerId": 905219922,
+   "pos": 4,
+   "shelfId": "s69e35864",
+   "title": "With Ears To See And Eyes To Hear",
+   "year": 2010
+  },
+  "af4f29ce3": {
+   "addedAt": 1793113973,
+   "artist": "Medium Build",
+   "artistId": 8783186,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/75ce3277e2f92cec639305da4858a384/500x500-000000-80-0-0.jpg",
+   "deezerId": 566358621,
+   "pos": 1,
+   "shelfId": "sd3dd0116",
+   "title": "Country",
+   "year": 2024
+  },
+  "a4d1cc1fc": {
+   "addedAt": 1793113985,
+   "artist": "mewithoutYou",
+   "artistId": 7656,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/a3dd35e7efd6a9fd55dbfc1bd163b793/500x500-000000-80-0-0.jpg",
+   "deezerId": 299454,
+   "pos": 10,
+   "shelfId": "s69e35864",
+   "title": "Catch For Us The Foxes",
+   "year": 2004
+  },
+  "avsfhf6bk": {
+   "addedAt": 1793114787,
+   "artist": "Silverstein",
+   "artistId": 5721,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/ae5de3c7b1fc5d7ec97b5fe37aef8f44/500x500-000000-80-0-0.jpg",
+   "deezerId": 217494042,
+   "pos": -1,
+   "shelfId": "s69e35864",
+   "title": "Discovering The Waterfront",
+   "year": 2011
+  },
+  "ad7f315bf": {
+   "addedAt": 1793113987,
+   "artist": "Norma Jean",
+   "artistId": 2174,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/44afb2bdaa1d982130e7e7de1ea515b6/500x500-000000-80-0-0.jpg",
+   "deezerId": 319783,
+   "pos": 8,
+   "shelfId": "s69e35864",
+   "title": "The Anti Mother",
+   "year": 2008
+  },
+  "a071ea5a2": {
+   "addedAt": 1793113986,
+   "artist": "Norma Jean",
+   "artistId": 2174,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/2b09f04d7673225ba65306115096c693/500x500-000000-80-0-0.jpg",
+   "deezerId": 320461197,
+   "pos": 9,
+   "shelfId": "s69e35864",
+   "title": "Meridional",
+   "year": 2010
+  },
+  "a81ba0499": {
+   "addedAt": 1793113982,
+   "artist": "mewithoutYou",
+   "artistId": 7656,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/a5f2a923f85ec3f4ce507b43c8e12489/500x500-000000-80-0-0.jpg",
+   "deezerId": 123219292,
+   "pos": 13,
+   "shelfId": "s69e35864",
+   "title": "Pale Horses",
+   "year": 2015
+  },
+  "ad665a5c8": {
+   "addedAt": 1793113995,
+   "artist": "Underoath",
+   "artistId": 4338,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/6e459067ff4073599923083cdca927db/500x500-000000-80-0-0.jpg",
+   "deezerId": 299364,
+   "pos": 0,
+   "shelfId": "s69e35864",
+   "title": "They're Only Chasing Safety",
+   "year": 2004
+  },
+  "aff6a0543": {
+   "addedAt": 1793113993,
+   "artist": "Underoath",
+   "artistId": 4338,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/fc11408cc934ce3b9806f17496c5c393/500x500-000000-80-0-0.jpg",
+   "deezerId": 319784,
+   "pos": 2,
+   "shelfId": "s69e35864",
+   "title": "Lost In The Sound Of Separation",
+   "year": 2008
+  },
+  "ae2b6e901": {
+   "addedAt": 1793113994,
+   "artist": "Underoath",
+   "artistId": 4338,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/74ec60d6f762754b722307165bd65f63/500x500-000000-80-0-0.jpg",
+   "deezerId": 301160,
+   "pos": 1,
+   "shelfId": "s69e35864",
+   "title": "Define The Great Line",
+   "year": 2006
+  },
+  "aktw9euys": {
+   "addedAt": 1793115989,
+   "artist": "Washed Out",
+   "artistId": 372631,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/769bf7b97afdb38cdeada3650d9c6567/500x500-000000-80-0-0.jpg",
+   "deezerId": 640886531,
+   "pos": 0,
+   "shelfId": "swqird3yn",
+   "title": "Paracosm",
+   "year": 2013
+  },
+  "a83265aa6": {
+   "addedAt": 1793113976,
+   "artist": "Nickelback",
+   "artistId": 338,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/8438a61b216c2c625da26b7b792480e3/500x500-000000-80-0-0.jpg",
+   "deezerId": 176371132,
+   "pos": 3,
+   "shelfId": "s455b82d2",
+   "title": "All The Right Reasons",
+   "year": 2005
+  },
+  "acce02341": {
+   "addedAt": 1793113990,
+   "artist": "Sleeping With Sirens",
+   "artistId": 389588,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/6888980dfeebe2ad5794433ae7da3fca/500x500-000000-80-0-0.jpg",
+   "deezerId": 901415842,
+   "pos": 5,
+   "shelfId": "s69e35864",
+   "title": "Let's Cheers To This",
+   "year": 2011
+  },
+  "ac11c0a8e": {
+   "addedAt": 1793113978,
+   "artist": "Creed",
+   "artistId": 1783,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/b712383c6e595685b38c3db8fb78769e/500x500-000000-80-0-0.jpg",
+   "deezerId": 8015612,
+   "pos": 1,
+   "shelfId": "s455b82d2",
+   "title": "Weathered",
+   "year": 2001
+  },
+  "ac4ece129": {
+   "addedAt": 1793113977,
+   "artist": "Nickelback",
+   "artistId": 338,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/61395db55522768a7a42e085c487d045/500x500-000000-80-0-0.jpg",
+   "deezerId": 94217,
+   "pos": 2,
+   "shelfId": "s455b82d2",
+   "title": "Silver Side Up",
+   "year": 2001
+  },
+  "a31e46913": {
+   "addedAt": 1793113980,
+   "artist": "P.O.D",
+   "artistId": 1443214,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/65dc81e5ad11f510029a4ec11333c9d3/500x500-000000-80-0-0.jpg",
+   "deezerId": 3901801,
+   "pos": 1,
+   "shelfId": "se0727122",
+   "title": "The Fundamental Elements of Southtown",
+   "year": 1999
+  },
+  "ahvzms2px": {
+   "addedAt": 1793114943,
+   "artist": "Pearl Jam",
+   "artistId": 1319,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/00ee8c40862fb4e258fcbeaa17d7199e/500x500-000000-80-0-0.jpg",
+   "deezerId": 708674,
+   "pos": -1,
+   "shelfId": "s455b82d2",
+   "title": "Ten",
+   "year": 1992
+  },
+  "a362c29e8": {
+   "addedAt": 1793113983,
+   "artist": "mewithoutYou",
+   "artistId": 7656,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/e77133116991cb3c309a309edff70de1/500x500-000000-80-0-0.jpg",
+   "deezerId": 678835901,
+   "pos": 12,
+   "shelfId": "s69e35864",
+   "title": "Ten Stories",
+   "year": 2012
+  },
+  "a9454292b": {
+   "addedAt": 1793113981,
+   "artist": "P.O.D",
+   "artistId": 1443214,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/376baa096b08284c58382ad37895b686/500x500-000000-80-0-0.jpg",
+   "deezerId": 253323012,
+   "pos": 0,
+   "shelfId": "se0727122",
+   "title": "Satellite",
+   "year": 2001
+  },
+  "a2fd4da0b": {
+   "addedAt": 1793113984,
+   "artist": "mewithoutYou",
+   "artistId": 7656,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/2aa56edf0b6633e4404ad06343c58490/500x500-000000-80-0-0.jpg",
+   "deezerId": 1234601,
+   "pos": 11,
+   "shelfId": "s69e35864",
+   "title": "Brother, Sister",
+   "year": 2006
+  },
+  "ab710f211": {
+   "addedAt": 1793113992,
+   "artist": "Underoath",
+   "artistId": 4338,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/18aa6dce6966377fb57d02ff4c2bd868/500x500-000000-80-0-0.jpg",
+   "deezerId": 1453122,
+   "pos": 3,
+   "shelfId": "s69e35864",
+   "title": "Ø (Disambiguation)",
+   "year": 2010
+  },
+  "aef380011": {
+   "addedAt": 1793113974,
+   "artist": "Bilmuri",
+   "artistId": 9644968,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/53a1f7b8170b1e40076c2182fa4853e9/500x500-000000-80-0-0.jpg",
+   "deezerId": 955544441,
+   "pos": 0,
+   "shelfId": "sd3dd0116",
+   "title": "KINDA HARD",
+   "year": 2026
+  },
+  "a96e7e187": {
+   "addedAt": 1793113988,
+   "artist": "Saosin",
+   "artistId": 12025,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/b91e25e4dc16b1f61bd7ed54b3fc418e/500x500-000000-80-0-0.jpg",
+   "deezerId": 7381808,
+   "pos": 7,
+   "shelfId": "s69e35864",
+   "title": "In Search of Solid Ground",
+   "year": 2009
+  },
+  "a553874d3": {
+   "addedAt": 1793113979,
+   "artist": "Creed",
+   "artistId": 1783,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/aa4587a7b96225f6cb84385808b953a6/500x500-000000-80-0-0.jpg",
+   "deezerId": 626875121,
+   "pos": 0,
+   "shelfId": "s455b82d2",
+   "title": "Human Clay",
+   "year": 1999
+  },
+  "a0775f411": {
+   "addedAt": 1793113989,
+   "artist": "Saosin",
+   "artistId": 12025,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/83155c071adbfcad9c6b4a37ee7f9892/500x500-000000-80-0-0.jpg",
+   "deezerId": 300739,
+   "pos": 6,
+   "shelfId": "s69e35864",
+   "title": "Saosin",
+   "year": 2006
+  },
+  "ab09a794b": {
+   "addedAt": 1793113975,
+   "artist": "Chevelle",
+   "artistId": 1328,
+   "cover": "https://cdn-images.dzcdn.net/images/cover/daa52bc8630b3516ae54646e258ab3b4/500x500-000000-80-0-0.jpg",
+   "deezerId": 71683,
+   "pos": 4,
+   "shelfId": "s455b82d2",
+   "title": "Wonder What's Next",
+   "year": 2002
+  }
+ }
+}

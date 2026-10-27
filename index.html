@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Crate</title>
+<meta name="description" content="My albums on shelves, by period of my life.">
+<meta name="theme-color" content="#101216">
+<!-- No apple-mobile-web-app-capable: the home-screen icon opens in Safari, where tapping
+     a music.youtube.com link hands off to the YouTube Music app. -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Permanent+Marker&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="rail" aria-label="Library">
+    <a class="brand" href="#home">Crate</a>
+    <nav>
+      <a class="rail-link" href="#home" data-route="home">All shelves</a>
+      <a class="rail-link" href="#recent" data-route="recent">Recently added</a>
+    </nav>
+    <div class="rail-label">Shelves</div>
+    <nav id="shelf-nav"></nav>
+    <form id="new-shelf" class="new-shelf">
+      <input id="new-shelf-name" placeholder="New shelf…" aria-label="New shelf name" autocomplete="off">
+      <button class="btn" aria-label="Create shelf">+</button>
+    </form>
+  </aside>
+  <main>
+    <header class="top">
+      <div id="top-search"></div>
+      <div id="account"></div>
+    </header>
+    <div id="view"><div class="empty offline">Loading your shelves…</div></div>
+  </main>
+</div>
+<div id="menu" class="menu" hidden></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<script src="config.js"></script>
+<script src="catalog.js"></script>
+<script src="store.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
