@@ -550,36 +550,59 @@ async function rebuildOnYouTube(i) {
   let token;
   try { token = await Store.youtubeToken({ write: true }); }
   catch (e) { status(""); toast(/popup-closed|cancelled/.test(e.code || "") ? "Sign-in was closed before it finished." : "Google sign-in didn't finish."); return; }
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  // YouTube often answers "busy" (409 SERVICE_UNAVAILABLE, or 5xx) when items are added quickly
+  // to a new playlist; those are retried with growing pauses.
   const yt = async (path, opts = {}) => {
-    const res = await fetch("https://www.googleapis.com/youtube/v3/" + path, { ...opts, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" } });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const reason = body?.error?.errors?.[0]?.reason || "";
-      throw new Error(reason === "quotaExceeded" ? "YouTube's daily limit for Crate is used up. Try the rest tomorrow." : `YouTube said no (${res.status}${reason ? ", " + reason : ""}).`);
+    for (let attempt = 0; ; attempt++) {
+      const res = await fetch("https://www.googleapis.com/youtube/v3/" + path, { ...opts, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" } });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) return body;
+      const reason = body?.error?.errors?.[0]?.reason || body?.error?.status || "";
+      const busy = res.status === 409 || res.status >= 500 || /SERVICE_UNAVAILABLE|backendError/i.test(reason);
+      if (busy && attempt < 5) { status(`YouTube is busy, retrying… (${attempt + 1} of 5)`); await wait(1500 * 2 ** attempt); continue; }
+      throw new Error(reason === "quotaExceeded" ? "YouTube's daily limit for Crate is used up. Click Rebuild again tomorrow to finish; it picks up where it stopped."
+        : `YouTube said no (${res.status}${reason ? ", " + reason : ""}). Click Rebuild again to pick up where it stopped.`);
     }
-    return body;
   };
   const missing = [];
+  const songs = p.items.map((id) => byId.get(id)).filter(Boolean);
+  const done = { ...(vaultPref("ytRebuilt", {})[p.name] || {}) }; // { playlistId, added: number of songs handled }
+  const save = () => setVaultPref({ ytRebuilt: { ...vaultPref("ytRebuilt", {}), [p.name]: { ...done } } });
   try {
-    const list = await yt("playlists?part=snippet,status", { method: "POST", body: JSON.stringify({
-      snippet: { title: p.name, description: "Rebuilt by Crate from an old iTunes playlist." }, status: { privacyStatus: "private" } }) });
-    const songs = p.items.map((id) => byId.get(id)).filter(Boolean);
+    // Reuse the playlist from an earlier, unfinished run instead of making a duplicate.
+    if (!done.playlistId) {
+      const mine = await yt("playlists?" + new URLSearchParams({ part: "snippet,contentDetails", mine: "true", maxResults: "50" }));
+      const earlier = (mine.items || []).find((x) => x.snippet?.title === p.name && /Rebuilt by Crate/.test(x.snippet?.description || ""));
+      if (earlier) Object.assign(done, { playlistId: earlier.id, added: earlier.contentDetails?.itemCount || 0 });
+    }
+    if (!done.playlistId) {
+      const list = await yt("playlists?part=snippet,status", { method: "POST", body: JSON.stringify({
+        snippet: { title: p.name, description: "Rebuilt by Crate from an old iTunes playlist." }, status: { privacyStatus: "private" } }) });
+      Object.assign(done, { playlistId: list.id, added: 0 });
+      await wait(1500); // give a brand-new playlist a moment before filling it
+    }
+    await save();
     let added = 0;
-    for (const [n, r] of songs.entries()) {
+    for (let n = done.added || 0; n < songs.length; n++) {
       status(`Adding ${n + 1} of ${songs.length}…`);
-      const q = songQuery(r, p.name);
+      const q = songQuery(songs[n], p.name);
       const found = await yt("search?" + new URLSearchParams({ part: "snippet", type: "video", maxResults: "5", q }));
       // Prefer YouTube Music's own uploads ("Artist - Topic"), then the top result.
       const items = found.items || [];
       const pick = items.find((x) => / - Topic$/.test(x.snippet?.channelTitle || "")) || items[0];
-      if (!pick) { missing.push(q); continue; }
-      await yt("playlistItems?part=snippet", { method: "POST", body: JSON.stringify({
-        snippet: { playlistId: list.id, resourceId: { kind: "youtube#video", videoId: pick.id.videoId } } }) });
-      added++;
+      if (pick) {
+        await yt("playlistItems?part=snippet", { method: "POST", body: JSON.stringify({
+          snippet: { playlistId: done.playlistId, resourceId: { kind: "youtube#video", videoId: pick.id.videoId } } }) });
+        added++;
+      } else missing.push(q);
+      done.added = n + 1;
+      await save();
+      await wait(800);
     }
-    status(`Done: ${added} of ${songs.length} added${missing.length ? `. Not found: ${missing.join("; ")}` : ""}.`);
+    status(`Done: ${songs.length - missing.length} of ${songs.length} songs in the playlist${missing.length ? `. Not found: ${missing.join("; ")}` : ""}.`);
     toast(`“${p.name}” is in your YouTube Music library (private). Check matches, especially remixes.`, {
-      label: "Open", run: () => window.open(`https://music.youtube.com/playlist?list=${list.id}`, "_blank", "noopener"),
+      label: "Open", run: () => window.open(`https://music.youtube.com/playlist?list=${done.playlistId}`, "_blank", "noopener"),
     });
   } catch (e) {
     status(e.message + (missing.length ? ` Not found so far: ${missing.join("; ")}` : ""));
