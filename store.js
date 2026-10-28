@@ -154,9 +154,9 @@ const Store = (() => {
 
     canArchive: () => mode === "cloud" && !!uid,
 
-    async saveVault(docs, onProgress) {
+    async saveVault(docs, onProgress, collection = "vault") {
       if (mode !== "cloud") throw new Error("Sign in to Crate first so the archive is saved to your account.");
-      const col = userCol("vault");
+      const col = userCol(collection);
       const old = await col.get();
       const keep = new Set(Object.keys(docs));
       let i = 0;
@@ -168,9 +168,9 @@ const Store = (() => {
     },
 
     /** Reads the archive back from the server (not this device's cache). */
-    async loadVault({ fromServer = false } = {}) {
+    async loadVault({ fromServer = false, collection = "vault" } = {}) {
       if (mode !== "cloud") return null;
-      const snap = await userCol("vault").get(fromServer ? { source: "server" } : undefined);
+      const snap = await userCol(collection).get(fromServer ? { source: "server" } : undefined);
       const out = {};
       snap.forEach((d) => { out[d.id] = d.data(); });
       return out;

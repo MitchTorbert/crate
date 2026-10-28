@@ -60,6 +60,168 @@ function decodeLocation(loc) {
   try { return decodeURIComponent(String(loc).replace(/^file:\/\/(localhost)?/, "")); } catch { return String(loc); }
 }
 
+// ------------------------------------------------------------------ reading an iTunes .itl file
+// The .itl format is Apple's own and undocumented; this follows the layout worked out by
+// open-source readers. The body is AES-128-ECB encrypted (a fixed, widely published key)
+// for a leading stretch of bytes, then zlib-compressed. Inside is a run of tagged chunks:
+// "htim" starts a song, "hohm" holds one text field, "hpim" starts a playlist, "hptm" is
+// one playlist entry.
+
+const ITL_KEY = "BHUILuilfghuila3";
+
+function loadAes() {
+  if (window.aesjs) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/aes-js/3.1.2/index.min.js";
+    s.onload = res; s.onerror = () => rej(new Error("Couldn't load the decoder. Check your connection and try again."));
+    document.head.append(s);
+  });
+}
+
+async function inflateZlib(bytes) {
+  const out = new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate")));
+  return new Uint8Array(await out.arrayBuffer());
+}
+
+const tagAt = (d, p) => String.fromCharCode(d[p], d[p + 1], d[p + 2], d[p + 3]);
+
+async function decryptItl(buf) {
+  const d = new Uint8Array(buf), dv = new DataView(buf);
+  if (tagAt(d, 0) !== "hdfm") throw new Error("That isn't an iTunes library (.itl) file.");
+  const headerLen = dv.getUint32(4);
+  const version = new TextDecoder("latin1").decode(d.slice(17, 17 + d[16]));
+  const body = d.slice(headerLen);
+  const declared = headerLen >= 96 ? dv.getUint32(92) : 0;
+  await loadAes();
+  const ecb = new aesjs.ModeOfOperation.ecb(aesjs.utils.utf8.toBytes(ITL_KEY));
+  // Different iTunes versions encrypt different amounts; try the likely ones.
+  for (const n of [...new Set([declared, 102400, body.length])].filter((x) => x > 0)) {
+    const size = Math.min(n, body.length) & ~15;
+    const plain = body.slice();
+    plain.set(ecb.decrypt(body.slice(0, size)), 0);
+    if (plain[0] === 0x78) { try { return { version, data: await inflateZlib(plain) }; } catch {} }
+    if (/^h[a-z]{3}$/.test(tagAt(plain, 0))) return { version, data: plain };
+  }
+  throw new Error("This .itl file couldn't be decoded here.");
+}
+
+function hohmText(d, dv, pos, total) {
+  if (total < 40) return null;
+  const enc = dv.getUint32(pos + 24), len = dv.getUint32(pos + 28);
+  if (len <= 0 || 40 + len > total) return null;
+  const bytes = d.subarray(pos + 40, pos + 40 + len);
+  let zeros = 0;
+  for (let i = 0; i < bytes.length; i += 2) if (bytes[i] === 0) zeros++;
+  const utf16 = enc === 1 || (len % 2 === 0 && zeros > bytes.length / 4);
+  try { return new TextDecoder(utf16 ? "utf-16be" : "utf-8", { fatal: !utf16 }).decode(bytes); }
+  catch { return new TextDecoder("latin1").decode(bytes); }
+}
+
+const HOHM = { 0x02: "name", 0x03: "album", 0x04: "artist", 0x05: "genre", 0x06: "kind", 0x0C: "composer", 0x0D: "path", 0x0B: "url", 0x1B: "albumArtist" };
+
+function parseItlChunks(d) {
+  const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
+  const tracks = new Map(), playlists = [];
+  let track = null, pl = null, pos = 0;
+  while (pos + 12 <= d.length) {
+    const t = tagAt(d, pos);
+    const hl = /^h[a-z]{3}$/.test(t) ? dv.getUint32(pos + 4) : 0;
+    if (hl < 8 || hl > 1e6 || pos + hl > d.length) { pos++; continue; } // not a chunk start: resync
+    if (t === "hohm") {
+      const total = dv.getUint32(pos + 8);
+      if (total < hl || pos + total > d.length) { pos++; continue; }
+      const type = dv.getUint32(pos + 12);
+      const text = hohmText(d, dv, pos, total);
+      if (text != null) {
+        if (pl && type === 0x64) pl.name = text;
+        else if (track && HOHM[type] && !track[HOHM[type]]) track[HOHM[type]] = text;
+      }
+      pos += total;
+      continue;
+    }
+    if (t === "htim") { track = { id: dv.getUint32(pos + 16) }; tracks.set(track.id, track); pl = null; }
+    else if (t === "hpim") { pl = { name: "", raw: [] }; playlists.push(pl); track = null; }
+    else if (t === "hptm" && pl) pl.raw.push(d.slice(pos, pos + hl));
+    pos += hl;
+  }
+  // Which field of a playlist entry holds the song id isn't certain; use the one that matches songs.
+  let best = 24, bestHits = -1;
+  for (let off = 8; off <= 40; off += 4) {
+    let hits = 0;
+    for (const p of playlists) for (const r of p.raw) if (r.length >= off + 4 && tracks.has(new DataView(r.buffer).getUint32(off))) hits++;
+    if (hits > bestHits) { best = off; bestHits = hits; }
+  }
+  const pls = playlists.map((p) => ({
+    name: p.name || "Untitled", smart: false,
+    items: p.raw.filter((r) => r.length >= best + 4).map((r) => new DataView(r.buffer).getUint32(best)).filter((id) => tracks.has(id)),
+  })).filter((p) => p.items.length && !/^(Library|Music|Movies|TV Shows|Podcasts|Audiobooks|Books|Purchased|Genius|iTunes U|Voice Memos)$/i.test(p.name));
+  return { tracks: [...tracks.values()], playlists: pls };
+}
+
+async function parseItl(file) {
+  const buf = await file.arrayBuffer();
+  const raw = new Uint8Array(buf);
+  let decoded = null, problem = "";
+  try {
+    const { version, data } = await decryptItl(buf);
+    const { tracks, playlists } = parseItlChunks(data);
+    const songs = tracks.filter((t) => t.name && !/video|podcast|book|movie/i.test(t.kind || ""));
+    if (!songs.length) throw new Error("No songs were found inside the file.");
+    decoded = {
+      version,
+      tracks: songs.map((t) => [t.id, t.name || "", t.artist || "", t.albumArtist || "", t.album || "", t.genre || "", null, null, null, null,
+        0, "", "", 0, 0, 0, t.kind || "", t.path || t.url || "", 0, t.composer || ""]),
+      playlists,
+    };
+  } catch (e) { problem = e.message; }
+  return {
+    source: "iTunes library (.itl)" + (decoded ? `, iTunes ${decoded.version}` : ""),
+    tracks: decoded?.tracks || [], playlists: decoded?.playlists || [], raw, rawName: file.name, problem,
+    partial: !!decoded,
+  };
+}
+
+async function sha256(bytes) {
+  const h = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function toBase64(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function fromBase64(b64) {
+  const s = atob(b64), out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+
+/** Keeps the untouched original file in the account, so nothing depends on decoding being complete. */
+async function saveOriginalFile(raw, name) {
+  const b64 = toBase64(raw), docs = {}, size = 600000;
+  for (let i = 0, n = 0; i < b64.length; i += size, n++) docs[`part-${String(n).padStart(4, "0")}`] = { b64: b64.slice(i, i + size) };
+  const hash = await sha256(raw);
+  docs.info = { name, bytes: raw.length, sha256: hash, parts: Object.keys(docs).length, savedAt: Math.floor(Date.now() / 1000) };
+  await Store.saveVault(docs, (i, n) => setVaultStatus(`Saving your original library file… ${i} of ${n}`), "vaultfile");
+  setVaultStatus("Checking the saved file…");
+  const back = await Store.loadVault({ fromServer: true, collection: "vaultfile" });
+  const joined = Object.keys(back).filter((k) => k.startsWith("part-")).sort().map((k) => back[k].b64).join("");
+  if ((await sha256(fromBase64(joined))) !== hash) throw new Error("The saved copy of your library file didn't match. Keep the drive plugged in and try again.");
+  return docs.info;
+}
+
+async function downloadOriginal() {
+  const back = await Store.loadVault({ collection: "vaultfile" });
+  if (!back?.info) { toast("No original library file is saved."); return; }
+  const bytes = fromBase64(Object.keys(back).filter((k) => k.startsWith("part-")).sort().map((k) => back[k].b64).join(""));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  a.download = back.info.name || "iTunes Library.itl";
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
 // ------------------------------------------------------------------ reading a plain music folder
 
 const AUDIO_EXT = /\.(mp3|m4a|m4p|aac|flac|wav|aiff?|alac|ogg|opus|wma)$/i;
@@ -109,6 +271,7 @@ async function saveArchive(parsed) {
     source: parsed.source, importedAt: Math.floor(Date.now() / 1000), fields: TF,
     trackCount: parsed.tracks.length, playlistCount: parsed.playlists.length,
     libraryDate: parsed.libraryDate || "", musicFolder: parsed.musicFolder || "",
+    partial: !!parsed.partial, original: parsed.original || null,
     chunks: Object.keys(docs).length,
   };
   await Store.saveVault(docs, (i, n) => setVaultStatus(`Saving to your account… ${i} of ${n}`));
@@ -137,7 +300,20 @@ async function importOld(files, kind) {
   render();
   try {
     let parsed;
-    if (kind === "xml") {
+    if (kind === "xml" && /\.itl$/i.test(files[0].name)) {
+      const f = files[0];
+      setVaultStatus(`Reading ${f.name} (${(f.size / 1e6).toFixed(1)} MB)…`);
+      parsed = await parseItl(f);
+      // Save the untouched file first: it holds everything, whatever decoding manages.
+      parsed.original = await saveOriginalFile(parsed.raw, parsed.rawName);
+      if (!parsed.tracks.length) {
+        VAULT.loading = false;
+        VAULT.fileOnly = parsed.original;
+        setVaultStatus("");
+        render();
+        return;
+      }
+    } else if (kind === "xml") {
       const f = files[0];
       setVaultStatus(`Reading ${f.name} (${(f.size / 1e6).toFixed(1)} MB)…`);
       parsed = parseItunesXml(await f.text());
@@ -187,6 +363,7 @@ function albumsOf(data) {
   return [...byKey.values()].map((a) => ({ ...a, stars: a.rated.length ? Math.round(a.rated.reduce((x, y) => x + y, 0) / a.rated.length / 20) : 0 }));
 }
 
+const fileSize = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
 const stars = (n) => (n ? "★".repeat(n) + "☆".repeat(5 - n) : "");
 const shortDate = (d) => (d ? new Date(d).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "");
 
@@ -202,6 +379,10 @@ function renderVault() {
   const d = VAULT.data;
   view.innerHTML = `
     <h1 class="page-title">Old hard drive</h1>
+    ${VAULT.fileOnly ? `<div class="empty" style="margin:16px 0">
+        <b>Your library file is saved and checked</b> (${fileSize(VAULT.fileOnly.bytes)}, stored in your account), so nothing in it will be lost when you unplug the drive.
+        Crate couldn't read the songs out of it yet. Send that file to Claude so the reader can be finished, or use “Choose the music folder” below to list your albums now.
+        <p><button class="btn" id="vault-original">Download the saved file</button></p></div>` : ""}
     ${d ? vaultBrowse(d) : vaultImport()}`;
   wireVault();
 }
@@ -216,16 +397,17 @@ function vaultImport() {
     <section class="import">
       <div class="drop">
         ${VAULT.loading ? `<b id="vault-status">${esc(VAULT.status || "Loading…")}</b>` : `
-        <b>1. Pick your iTunes library file</b>
-        <span class="note">On the old drive, open <b>Users → your name → Music → iTunes</b> and pick <b>iTunes Music Library.xml</b> (or <b>iTunes Library.xml</b>). Not the “.itl” file.</span>
-        <div class="import-btns"><label class="btn primary">Choose the library file<input type="file" id="vault-xml" accept=".xml,text/xml" hidden></label></div>
-        <span class="meta" style="margin-top:10px">No .xml file? Choose the music folder itself (iTunes Media → Music). That keeps artists, albums, and songs, but not play counts or ratings.</span>
+        <b>Pick your iTunes library file</b>
+        <span class="note">On the old drive, open <b>Users → your name → Music → iTunes</b> and pick <b>iTunes Library.itl</b>, or <b>iTunes Music Library.xml</b> if you have one. Crate saves an exact copy of the file to your account either way.</span>
+        <div class="import-btns"><label class="btn primary">Choose the library file<input type="file" id="vault-xml" accept=".xml,.itl,text/xml" hidden></label></div>
+        <span class="meta" style="margin-top:10px">Also worth doing: choose the music folder itself (iTunes Media → Music) to record every album folder on the drive.</span>
         <div class="import-btns"><label class="btn">Choose the music folder<input type="file" id="vault-dir" webkitdirectory multiple hidden></label></div>`}
       </div>
     </section>`;
 }
 
 function vaultBrowse(d) {
+  if (d.info.partial && VAULT.sort === "plays") VAULT.sort = "artist"; // no play counts to sort by yet
   const albums = albumsOf(d);
   const plays = d.tracks.reduce((n, r) => n + (r[10] || 0), 0);
   const years = {};
@@ -241,8 +423,11 @@ function vaultBrowse(d) {
   const info = d.info;
   return `
     <p class="note">${VAULT.verified ? "<b>Saved and checked.</b> Everything below is stored in your account, so it's safe to unplug the drive. " : ""}
-      ${d.tracks.length.toLocaleString()} songs · ${albums.length.toLocaleString()} albums · ${d.playlists.length} playlists · ${plays.toLocaleString()} plays.
+      ${d.tracks.length.toLocaleString()} songs · ${albums.length.toLocaleString()} albums · ${d.playlists.length} playlists${info.partial ? "" : ` · ${plays.toLocaleString()} plays`}.
       From ${esc(info.source)}${info.libraryDate ? `, last updated ${shortDate(info.libraryDate)}` : ""}.</p>
+    ${info.partial ? `<p class="note"><b>Play counts, ratings and dates added aren't shown yet.</b> They're in your original library file, which is saved in your account
+      (${fileSize(info.original.bytes)}, checked). Crate can fill them in once the .itl reader is finished; send the file to Claude to make that happen.
+      <button class="link" id="vault-original">Download the saved file</button></p>` : ""}
     <div class="vault-tabs">
       <button class="btn ${VAULT.tab === "albums" ? "primary" : ""}" data-vtab="albums">Albums</button>
       <button class="btn ${VAULT.tab === "playlists" ? "primary" : ""}" data-vtab="playlists">Playlists (${d.playlists.length})</button>
@@ -299,7 +484,8 @@ function wireVault() {
   if (s) s.onchange = () => { VAULT.sort = s.value; VAULT.shown = 120; render(); };
   document.getElementById("vault-more")?.addEventListener("click", () => { VAULT.shown += 200; render(); });
   document.getElementById("vault-backup")?.addEventListener("click", downloadBackup);
-  document.getElementById("vault-redo")?.addEventListener("click", () => { VAULT.data = null; VAULT.verified = false; VAULT.checked = true; view.innerHTML = `<h1 class="page-title">Old hard drive</h1>${vaultImport()}`; wireVault(); });
+  document.getElementById("vault-original")?.addEventListener("click", downloadOriginal);
+  document.getElementById("vault-redo")?.addEventListener("click", () => { VAULT.data = null; VAULT.verified = false; VAULT.checked = true; VAULT.fileOnly = null; view.innerHTML = `<h1 class="page-title">Old hard drive</h1>${vaultImport()}`; wireVault(); });
   view.querySelectorAll("[data-vpl]").forEach((el) => el.addEventListener("toggle", () => { if (el.open) VAULT.open = Number(el.dataset.vpl); }));
 }
 
