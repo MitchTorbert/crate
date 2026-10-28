@@ -371,8 +371,8 @@ function albumsOf(data) {
     const t = Object.fromEntries(TF.map((f, i) => [f, r[i]]));
     const artist = t.compilation ? "Various Artists" : (t.albumArtist || t.artist);
     const k = norm(t.album || "(no album)") + "|" + norm(artist);
-    const a = byKey.get(k) || { k, title: t.album || "(no album)", artist, year: t.year, genre: t.genre, songs: 0, plays: 0, last: "", added: "", rated: [], loved: 0 };
-    a.songs++; a.plays += t.plays || 0;
+    const a = byKey.get(k) || { k, title: t.album || "(no album)", artist, year: t.year, genre: t.genre, songs: 0, plays: 0, last: "", added: "", rated: [], loved: 0, ids: [] };
+    a.songs++; a.plays += t.plays || 0; a.ids.push(t.id);
     if (t.lastPlayed > a.last) a.last = t.lastPlayed;
     // A rebuilt library resets "date added"; the file's own date is often the truer "when I got it".
     const got = [t.added, t.modified].filter(Boolean).sort()[0];
@@ -437,7 +437,14 @@ function vaultBrowse(d) {
   for (const a of albums) if (a.added) { const y = a.added.slice(0, 4); years[y] = (years[y] || 0) + 1; }
   const q = VAULT.q.toLowerCase();
   const worship = albums.filter((a) => Catalog.isWorship(a)).length;
-  let list = albums.filter((a) => (VAULT.showWorship || !Catalog.isWorship(a)) && (!VAULT.year || (a.added || "").startsWith(VAULT.year)) && (!q || `${a.title} ${a.artist} ${a.genre}`.toLowerCase().includes(q)));
+  // Songs from hidden playlists (handmade mixes) shouldn't show up as albums either.
+  const hiddenIds = new Set(d.playlists.filter((p) => hiddenPlaylists().has(p.name)).flatMap((p) => p.items));
+  const fromHidden = (a) => a.ids.every((id) => hiddenIds.has(id));
+  const sortedKeys = new Set(allAlbums().map((x) => norm(x.title) + "|" + norm(x.artist)));
+  const isSorted = (a) => sortedKeys.has(norm(a.title) + "|" + norm(a.artist));
+  const hideSorted = vaultPref("hideSorted", true);
+  const counts = { mixes: albums.filter(fromHidden).length, sorted: albums.filter(isSorted).length };
+  let list = albums.filter((a) => !fromHidden(a) && !(hideSorted && isSorted(a)) && (VAULT.showWorship || !Catalog.isWorship(a)) && (!VAULT.year || (a.added || "").startsWith(VAULT.year)) && (!q || `${a.title} ${a.artist} ${a.genre}`.toLowerCase().includes(q)));
   const sorters = {
     plays: (a, b) => b.plays - a.plays, added: (a, b) => (b.added || "").localeCompare(a.added || ""), oldest: (a, b) => (a.added || "~").localeCompare(b.added || "~"),
     rating: (a, b) => b.stars - a.stars || b.plays - a.plays, artist: (a, b) => a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title),
@@ -466,6 +473,8 @@ function vaultBrowse(d) {
           .map(([v, l]) => `<option value="${v}" ${VAULT.sort === v ? "selected" : ""}>${l}</option>`).join("")}
       </select>
     </div>
+    <label class="meta vault-check"><input type="checkbox" id="vault-hide-sorted" ${hideSorted ? "checked" : ""}> Hide albums already on a shelf (${counts.sorted})</label>
+    ${counts.mixes ? `<p class="meta" style="text-transform:none;letter-spacing:0;margin:0 0 6px">${counts.mixes} album ${counts.mixes === 1 ? "entry" : "entries"} from hidden playlists left out.</p>` : ""}
     ${worship ? `<p class="meta" style="text-transform:none;letter-spacing:0;margin:0 0 10px">${VAULT.showWorship ? `Showing ${worship} worship albums.` : `${worship} worship albums hidden.`}
       <button class="link" id="vault-worship">${VAULT.showWorship ? "Hide them" : "Show them"}</button></p>` : ""}
     <div class="year-chips">
@@ -490,14 +499,91 @@ function vaultBrowse(d) {
     `}`;
 }
 
+// ------------------------------------------------------------------ playlists: hide, copy, rebuild on YouTube
+
+const VAULT_PREFS_DEFAULT = { hiddenPlaylists: ["BL△CK H•LES", "GR▲V_ST▲TIC", "THE▲FUTURE▲VOID"] };
+function vaultPrefs() { return { ...VAULT_PREFS_DEFAULT, ...(S.raw?.meta?.vault || {}) }; }
+function vaultPref(key, fallback) { const v = vaultPrefs()[key]; return v === undefined ? fallback : v; }
+function setVaultPref(patch) { return write(() => Store.set("meta", "vault", { ...vaultPrefs(), ...patch })); }
+const hiddenPlaylists = () => new Set(vaultPrefs().hiddenPlaylists || []);
+
+/** A search phrase for a song from messy old tags: drop junk, and skip "artists" that are really mix names. */
+function songQuery(r, playlist) {
+  // Curly braces held remix names in these tags, so they become normal brackets.
+  const clean = (s) => String(s || "").replace(/\{([^}]*)\}/g, "($1)").replace(/\[(HQ|video|official.*?)\]/gi, "").replace(/\s+--?\s+/g, " - ").replace(/\s+/g, " ").trim();
+  const name = clean(r[1]), artist = clean(r[2]);
+  const mixName = !artist || norm(playlist).includes(norm(artist)) || norm(artist).includes(norm(playlist)) || /future void|gr▲v/i.test(artist);
+  return mixName ? name : `${artist} ${name}`;
+}
+
+function tracklistText(p, byId) {
+  return [p.name, ...p.items.map((id) => byId.get(id)).filter(Boolean).map((r, i) => `${i + 1}. ${songQuery(r, p.name)}`)].join("\n");
+}
+
 function vaultPlaylists(d) {
   const byId = new Map(d.tracks.map((r) => [r[0], r]));
-  return `<div class="vault-pls">${d.playlists.map((p, i) => `
+  const hidden = hiddenPlaylists();
+  const row = (p, i) => `
     <details class="howto" ${VAULT.open === i ? "open" : ""} data-vpl="${i}">
       <summary>${esc(p.name)} <span class="meta">${p.items.length} songs${p.smart ? " · smart playlist" : ""}</span></summary>
+      <div class="pl-actions">
+        <button class="btn" data-pl-copy="${i}">Copy tracklist</button>
+        <button class="btn primary" data-pl-rebuild="${i}">Rebuild in YouTube Music</button>
+        <button class="link" data-pl-hide="${i}">${hidden.has(p.name) ? "Unhide" : "Hide this playlist"}</button>
+        <span class="meta" id="pl-status-${i}"></span>
+      </div>
       <ol class="pl-tracks">${p.items.map((id) => byId.get(id)).filter(Boolean)
         .map((r) => `<li>${esc(r[1])} <span class="meta">${esc(r[2])}${r[4] ? " · " + esc(r[4]) : ""}</span></li>`).join("")}</ol>
-    </details>`).join("") || `<div class="empty">No playlists in this library.</div>`}</div>`;
+    </details>`;
+  const shown = d.playlists.map((p, i) => [p, i]).filter(([p]) => !hidden.has(p.name));
+  const tucked = d.playlists.map((p, i) => [p, i]).filter(([p]) => hidden.has(p.name));
+  return `<div class="vault-pls">${shown.map(([p, i]) => row(p, i)).join("") || `<div class="empty">No playlists in this library.</div>`}
+    ${tucked.length ? `<h2 class="section-label">Hidden playlists</h2><p class="meta" style="text-transform:none;letter-spacing:0">Their songs are left out of the album list.</p>${tucked.map(([p, i]) => row(p, i)).join("")}` : ""}</div>`;
+}
+
+/** Makes a private YouTube playlist with the best match for each song. Uses the account's daily YouTube allowance. */
+async function rebuildOnYouTube(i) {
+  const d = VAULT.data, p = d.playlists[i];
+  const byId = new Map(d.tracks.map((r) => [r[0], r]));
+  const status = (t) => { const el = document.getElementById(`pl-status-${i}`); if (el) el.textContent = t; };
+  status("Waiting for Google sign-in…");
+  let token;
+  try { token = await Store.youtubeToken({ write: true }); }
+  catch (e) { status(""); toast(/popup-closed|cancelled/.test(e.code || "") ? "Sign-in was closed before it finished." : "Google sign-in didn't finish."); return; }
+  const yt = async (path, opts = {}) => {
+    const res = await fetch("https://www.googleapis.com/youtube/v3/" + path, { ...opts, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" } });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const reason = body?.error?.errors?.[0]?.reason || "";
+      throw new Error(reason === "quotaExceeded" ? "YouTube's daily limit for Crate is used up. Try the rest tomorrow." : `YouTube said no (${res.status}${reason ? ", " + reason : ""}).`);
+    }
+    return body;
+  };
+  const missing = [];
+  try {
+    const list = await yt("playlists?part=snippet,status", { method: "POST", body: JSON.stringify({
+      snippet: { title: p.name, description: "Rebuilt by Crate from an old iTunes playlist." }, status: { privacyStatus: "private" } }) });
+    const songs = p.items.map((id) => byId.get(id)).filter(Boolean);
+    let added = 0;
+    for (const [n, r] of songs.entries()) {
+      status(`Adding ${n + 1} of ${songs.length}…`);
+      const q = songQuery(r, p.name);
+      const found = await yt("search?" + new URLSearchParams({ part: "snippet", type: "video", maxResults: "5", q }));
+      // Prefer YouTube Music's own uploads ("Artist - Topic"), then the top result.
+      const items = found.items || [];
+      const pick = items.find((x) => / - Topic$/.test(x.snippet?.channelTitle || "")) || items[0];
+      if (!pick) { missing.push(q); continue; }
+      await yt("playlistItems?part=snippet", { method: "POST", body: JSON.stringify({
+        snippet: { playlistId: list.id, resourceId: { kind: "youtube#video", videoId: pick.id.videoId } } }) });
+      added++;
+    }
+    status(`Done: ${added} of ${songs.length} added${missing.length ? `. Not found: ${missing.join("; ")}` : ""}.`);
+    toast(`“${p.name}” is in your YouTube Music library (private). Check matches, especially remixes.`, {
+      label: "Open", run: () => window.open(`https://music.youtube.com/playlist?list=${list.id}`, "_blank", "noopener"),
+    });
+  } catch (e) {
+    status(e.message + (missing.length ? ` Not found so far: ${missing.join("; ")}` : ""));
+  }
 }
 
 function wireVault() {
@@ -510,6 +596,8 @@ function wireVault() {
   if (s) s.onchange = () => { VAULT.sort = s.value; VAULT.shown = 120; render(); };
   document.getElementById("vault-more")?.addEventListener("click", () => { VAULT.shown += 200; render(); });
   document.getElementById("vault-worship")?.addEventListener("click", () => { VAULT.showWorship = !VAULT.showWorship; render(); });
+  const hs = document.getElementById("vault-hide-sorted");
+  if (hs) hs.onchange = () => setVaultPref({ hideSorted: hs.checked }).then(render);
   document.getElementById("vault-backup")?.addEventListener("click", downloadBackup);
   document.getElementById("vault-original")?.addEventListener("click", downloadOriginal);
   document.getElementById("vault-redo")?.addEventListener("click", () => { VAULT.data = null; VAULT.verified = false; VAULT.checked = true; VAULT.fileOnly = null; view.innerHTML = `<h1 class="page-title">Old hard drive</h1>${vaultImport()}`; wireVault(); });
@@ -526,7 +614,26 @@ function downloadBackup() {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-view.addEventListener("click", (e) => {
+view.addEventListener("click", async (e) => {
+  const copy = e.target.closest("[data-pl-copy]");
+  if (copy) {
+    const d = VAULT.data, p = d.playlists[Number(copy.dataset.plCopy)];
+    const text = tracklistText(p, new Map(d.tracks.map((r) => [r[0], r])));
+    try { await navigator.clipboard.writeText(text); toast(`Copied the “${p.name}” tracklist`); }
+    catch { toast("Couldn't copy. Select the tracklist below and copy it instead."); }
+    return;
+  }
+  const rb = e.target.closest("[data-pl-rebuild]");
+  if (rb) { rb.disabled = true; await rebuildOnYouTube(Number(rb.dataset.plRebuild)); rb.disabled = false; return; }
+  const hide = e.target.closest("[data-pl-hide]");
+  if (hide) {
+    const name = VAULT.data.playlists[Number(hide.dataset.plHide)].name;
+    const set = hiddenPlaylists();
+    set.has(name) ? set.delete(name) : set.add(name);
+    await setVaultPref({ hiddenPlaylists: [...set] });
+    render();
+    return;
+  }
   const tab = e.target.closest("[data-vtab]");
   if (tab) { VAULT.tab = tab.dataset.vtab; render(); return; }
   const yr = e.target.closest("[data-vyear]");

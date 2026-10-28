@@ -136,10 +136,11 @@ const Store = (() => {
      * pick whichever Google account their YouTube Music is on, without changing who is
      * signed in to Crate.
      */
-    async youtubeToken() {
+    async youtubeToken({ write = false } = {}) {
       const app = firebase.apps.find((a) => a.name === "youtube") || firebase.initializeApp(window.CRATE_CONFIG.firebase, "youtube");
       const provider = new firebase.auth.GoogleAuthProvider();
-      provider.addScope("https://www.googleapis.com/auth/youtube.readonly");
+      // Reading likes needs read-only access; building playlists needs permission to manage them.
+      provider.addScope(write ? "https://www.googleapis.com/auth/youtube" : "https://www.googleapis.com/auth/youtube.readonly");
       provider.setCustomParameters({ prompt: "select_account" });
       const res = await app.auth().signInWithPopup(provider);
       const token = res.credential?.accessToken;
