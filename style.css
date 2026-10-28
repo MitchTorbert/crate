@@ -373,3 +373,37 @@ textarea.note-edit { width: 100%; max-width: 60ch; background: var(--raise); col
   .ib-actions { grid-column: 1 / -1; }
   .ib-actions select { flex: 1; max-width: none; }
 }
+
+/* old hard drive */
+.import { display: grid; gap: 10px; max-width: 760px; margin-top: 16px; }
+.drop { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 22px; border: 2px dashed var(--line); border-radius: 10px; background: var(--panel); }
+.drop .note { margin: 0; }
+.import-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.vault-tabs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 18px 0 14px; }
+.vault-tabs .link { margin-left: auto; }
+.vault-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.vault-tools input, .vault-tools select { padding: 8px 10px; border-radius: var(--radius); background: var(--raise); border: 1px solid var(--line); color: var(--fg); }
+.vault-tools input { flex: 1; min-width: 200px; max-width: 420px; }
+.year-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.year-chips .chip { cursor: pointer; background: none; font: 12px var(--body); }
+.year-chips .chip span { color: var(--muted); margin-left: 4px; font-family: var(--mono); }
+.year-chips .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.year-chips .chip.on span { color: inherit; }
+.vault-table { display: grid; }
+.vrow { display: grid; grid-template-columns: minmax(0, 1fr) 56px 70px 90px 80px 170px; gap: 12px; align-items: center; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+.vhead { font: 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.vt { min-width: 0; display: flex; flex-direction: column; }
+.vt b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vt small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vrow .num { font: 13px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.vrow .stars { color: var(--accent); letter-spacing: 1px; font-size: 12px; }
+.vact select { width: 100%; padding: 5px; border-radius: var(--radius); background: var(--raise); border: 1px solid var(--line); color: var(--fg); }
+.vact .meta { text-transform: none; letter-spacing: 0; }
+.pl-tracks { margin: 8px 0 4px; padding-left: 22px; display: grid; gap: 3px; font-size: 13px; }
+.vault-pls { display: grid; gap: 8px; }
+@media (max-width: 760px) {
+  .vrow { grid-template-columns: minmax(0, 1fr) 60px; }
+  .vrow > :nth-child(2), .vrow > :nth-child(4), .vrow > :nth-child(5) { display: none; }
+  .vrow .vact { grid-column: 1 / -1; }
+  .vhead { display: none; }
+}

@@ -578,6 +578,7 @@ function route() {
   else if (h === "new") S.route = { name: "new" };
   else if (h === "links") S.route = { name: "links" };
   else if (h === "chores") S.route = { name: "chores" };
+  else if (h === "vault") S.route = { name: "vault" };
   else if (h.startsWith("ytlinks=")) { receiveYtLinks(h.slice(8)); return; }
   else if (h === "search" && S.query) S.route = { name: "search" };
   else S.route = { name: "home" };
@@ -594,6 +595,7 @@ function render() {
   else if (r.name === "new") renderNew();
   else if (r.name === "links") renderLinks();
   else if (r.name === "chores") renderChores();
+  else if (r.name === "vault") renderVault();
   else if (r.name === "search") renderSearch();
   else renderHome();
   markActive();

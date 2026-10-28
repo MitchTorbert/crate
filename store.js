@@ -147,6 +147,34 @@ const Store = (() => {
       return token;
     },
     mode: () => mode,
+
+    // ---------------------------------------------------------------- old library archive
+    // Kept under users/<uid>/vault, outside the live listeners, and read only on request.
+    // Large lists are split into documents under Firestore's 1 MB limit.
+
+    canArchive: () => mode === "cloud" && !!uid,
+
+    async saveVault(docs, onProgress) {
+      if (mode !== "cloud") throw new Error("Sign in to Crate first so the archive is saved to your account.");
+      const col = userCol("vault");
+      const old = await col.get();
+      const keep = new Set(Object.keys(docs));
+      let i = 0;
+      for (const [id, data] of Object.entries(docs)) {
+        await col.doc(id).set(data);
+        onProgress?.(++i, keep.size);
+      }
+      for (const d of old.docs) if (!keep.has(d.id)) await d.ref.delete();
+    },
+
+    /** Reads the archive back from the server (not this device's cache). */
+    async loadVault({ fromServer = false } = {}) {
+      if (mode !== "cloud") return null;
+      const snap = await userCol("vault").get(fromServer ? { source: "server" } : undefined);
+      const out = {};
+      snap.forEach((d) => { out[d.id] = d.data(); });
+      return out;
+    },
     set, update, remove,
   };
 })();
