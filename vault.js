@@ -553,28 +553,39 @@ async function rebuildOnYouTube(i) {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   // YouTube often answers "busy" (409 SERVICE_UNAVAILABLE, or 5xx) when items are added quickly
   // to a new playlist; those are retried with growing pauses.
-  const yt = async (path, opts = {}) => {
+  const yt = async (path, opts = {}, tries = 5) => {
     for (let attempt = 0; ; attempt++) {
       const res = await fetch("https://www.googleapis.com/youtube/v3/" + path, { ...opts, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" } });
       const body = await res.json().catch(() => ({}));
       if (res.ok) return body;
       const reason = body?.error?.errors?.[0]?.reason || body?.error?.status || "";
       const busy = res.status === 409 || res.status >= 500 || /SERVICE_UNAVAILABLE|backendError/i.test(reason);
-      if (busy && attempt < 5) { status(`YouTube is busy, retrying… (${attempt + 1} of 5)`); await wait(1500 * 2 ** attempt); continue; }
-      throw new Error(reason === "quotaExceeded" ? "YouTube's daily limit for Crate is used up. Click Rebuild again tomorrow to finish; it picks up where it stopped."
+      if (busy && attempt < tries) { status(`YouTube is busy, retrying… (${attempt + 1} of ${tries})`); await wait(1500 * 2 ** attempt); continue; }
+      const err = new Error(reason === "quotaExceeded" ? "YouTube's daily limit for Crate is used up. Click Rebuild again tomorrow to finish; it picks up where it stopped."
         : `YouTube said no (${res.status}${reason ? ", " + reason : ""}). Click Rebuild again to pick up where it stopped.`);
+      err.busy = busy; err.fatal = reason === "quotaExceeded" || res.status === 401 || res.status === 403;
+      throw err;
     }
   };
   const missing = [];
   const songs = p.items.map((id) => byId.get(id)).filter(Boolean);
   const done = { ...(vaultPref("ytRebuilt", {})[p.name] || {}) }; // { playlistId, added: number of songs handled }
+  let dupNote = "";
   const save = () => setVaultPref({ ytRebuilt: { ...vaultPref("ytRebuilt", {}), [p.name]: { ...done } } });
   try {
     // Reuse the playlist from an earlier, unfinished run instead of making a duplicate.
     if (!done.playlistId) {
-      const mine = await yt("playlists?" + new URLSearchParams({ part: "snippet,contentDetails", mine: "true", maxResults: "50" }));
-      const earlier = (mine.items || []).find((x) => x.snippet?.title === p.name && /Rebuilt by Crate/.test(x.snippet?.description || ""));
-      if (earlier) Object.assign(done, { playlistId: earlier.id, added: earlier.contentDetails?.itemCount || 0 });
+      // Match by name only (an earlier run may predate Crate's description), keeping the fullest one.
+      let page = "", all = [];
+      for (let k = 0; k < 5; k++) {
+        const mine = await yt("playlists?" + new URLSearchParams({ part: "snippet,contentDetails", mine: "true", maxResults: "50", ...(page ? { pageToken: page } : {}) }));
+        all = all.concat(mine.items || []);
+        if (!(page = mine.nextPageToken)) break;
+      }
+      const same = all.filter((x) => (x.snippet?.title || "").trim().toLowerCase() === p.name.trim().toLowerCase())
+        .sort((a, b) => (b.contentDetails?.itemCount || 0) - (a.contentDetails?.itemCount || 0));
+      if (same[0]) Object.assign(done, { playlistId: same[0].id, added: same[0].contentDetails?.itemCount || 0 });
+      if (same.length > 1) dupNote = ` You have ${same.length} playlists named “${p.name}” on YouTube; Crate filled the fullest one, so delete the others.`;
     }
     if (!done.playlistId) {
       const list = await yt("playlists?part=snippet,status", { method: "POST", body: JSON.stringify({
@@ -588,19 +599,28 @@ async function rebuildOnYouTube(i) {
       status(`Adding ${n + 1} of ${songs.length}…`);
       const q = songQuery(songs[n], p.name);
       const found = await yt("search?" + new URLSearchParams({ part: "snippet", type: "video", maxResults: "5", q }));
-      // Prefer YouTube Music's own uploads ("Artist - Topic"), then the top result.
+      // Prefer YouTube Music's own uploads ("Artist - Topic"), then the other results in order.
       const items = found.items || [];
-      const pick = items.find((x) => / - Topic$/.test(x.snippet?.channelTitle || "")) || items[0];
-      if (pick) {
-        await yt("playlistItems?part=snippet", { method: "POST", body: JSON.stringify({
-          snippet: { playlistId: done.playlistId, resourceId: { kind: "youtube#video", videoId: pick.id.videoId } } }) });
-        added++;
-      } else missing.push(q);
+      const candidates = [...items.filter((x) => / - Topic$/.test(x.snippet?.channelTitle || "")), ...items.filter((x) => !/ - Topic$/.test(x.snippet?.channelTitle || ""))];
+      let ok = false;
+      for (const c of candidates.slice(0, 3)) {
+        try {
+          await yt("playlistItems?part=snippet", { method: "POST", body: JSON.stringify({
+            snippet: { playlistId: done.playlistId, resourceId: { kind: "youtube#video", videoId: c.id.videoId } } }) }, 2);
+          ok = true;
+          break;
+        } catch (e) {
+          if (e.fatal) throw e;
+          // YouTube keeps refusing this particular video; try the next match instead.
+        }
+      }
+      if (ok) added++;
+      else missing.push(items.length ? `${q} (YouTube wouldn't add it)` : q);
       done.added = n + 1;
       await save();
       await wait(800);
     }
-    status(`Done: ${songs.length - missing.length} of ${songs.length} songs in the playlist${missing.length ? `. Not found: ${missing.join("; ")}` : ""}.`);
+    status(`Done: ${songs.length - missing.length} of ${songs.length} songs in the playlist${missing.length ? `. Not found: ${missing.join("; ")}` : ""}.${dupNote}`);
     toast(`“${p.name}” is in your YouTube Music library (private). Check matches, especially remixes.`, {
       label: "Open", run: () => window.open(`https://music.youtube.com/playlist?list=${done.playlistId}`, "_blank", "noopener"),
     });
