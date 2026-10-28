@@ -407,3 +407,4 @@ textarea.note-edit { width: 100%; max-width: 60ch; background: var(--raise); col
   .vrow .vact { grid-column: 1 / -1; }
   .vhead { display: none; }
 }
+#update-bar { bottom: auto; top: calc(16px + env(safe-area-inset-top, 0px)); }

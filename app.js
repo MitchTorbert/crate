@@ -155,7 +155,34 @@ function parseTyped(text) {
 
 // ------------------------------------------------------------------ rail & account
 
+// ------------------------------------------------------------------ staying up to date
+
+const FILES = ["./", "index.html", "style.css", "app.js", "catalog.js", "store.js", "vault.js", "config.js", "manifest.webmanifest", "version.json"];
+
+/** Re-download every file past the browser's cache, then reload. */
+async function hardRefresh() {
+  const btn = $("#refresh");
+  if (btn) { btn.disabled = true; btn.textContent = "Refreshing…"; }
+  await Promise.all(FILES.map((f) => fetch(f, { cache: "reload" }).catch(() => {})));
+  location.reload();
+}
+
+/** Show a notice when a newer version has been published. */
+async function checkForUpdate() {
+  try {
+    const live = await fetch("version.json", { cache: "no-store" }).then((r) => r.json());
+    if (live.v && window.CRATE_VERSION && live.v !== window.CRATE_VERSION && !$("#update-bar")) {
+      document.body.insertAdjacentHTML("beforeend",
+        `<div id="update-bar" class="toast" role="status"><span>A newer version of Crate is ready.</span><button id="update-now">Refresh</button></div>`);
+      $("#update-now").onclick = hardRefresh;
+    }
+  } catch {}
+}
+checkForUpdate();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForUpdate(); });
+
 function wireTheme() {
+  $("#refresh").onclick = hardRefresh;
   $("#theme").onclick = () => {
     const order = Object.keys(THEMES);
     const next = order[(order.indexOf(themeNow()) + 1) % order.length];
@@ -178,7 +205,7 @@ function themeNow() { try { return localStorage.getItem("crate:theme") || "dark"
 
 function renderAccount() {
   const el = $("#account");
-  const theme = `<button class="btn" id="theme" title="Switch between dark, light, and your device's setting">${THEMES[themeNow()]}</button>`;
+  const theme = `<button class="btn" id="refresh" title="Load the latest version of Crate" aria-label="Refresh Crate">↻ Refresh</button><button class="btn" id="theme" title="Switch between dark, light, and your device's setting">${THEMES[themeNow()]}</button>`;
   if (!Store.canSync()) { el.innerHTML = `${theme}<span class="meta">Saved on this device</span>`; wireTheme(); return; }
   el.innerHTML = theme + (S.user
     ? `<span class="meta" title="${esc(S.user.email || "")}">Synced</span><button class="link" id="sign-out">Sign out</button>`
