@@ -282,7 +282,7 @@ function suggestionCard(a, target) {
       ${coverArt(a)}
       <span class="play" aria-hidden="true">▶</span>
     </a>
-    ${a.reason ? `<button class="dismiss" data-dismiss="${a.deezerId}" aria-label="Not for me: hide ${esc(a.title)}" title="Not for me">×</button>` : ""}
+    ${a.reason ? `<button class="dismiss" data-dismiss="${keyOf(a)}" aria-label="Not for me: hide ${esc(a.title)}" title="Not for me">×</button>` : ""}
     <div class="album-title">${esc(a.title)}</div>
     <div class="album-sub"><span class="artist">${esc(a.artist)}</span><span class="yr">${a.year ?? ""}</span></div>
     ${foundNote(a) ? `<div class="reason" title="${esc(foundNote(a))}">${esc(foundNote(a))}</div>` : ""}
@@ -295,6 +295,49 @@ function suggestionCard(a, target) {
 
 const skeletons = (n) => Array.from({ length: n }, () =>
   `<div class="album skeleton"><div class="cover"></div><div class="bar"></div><div class="bar" style="width:55%"></div></div>`).join("");
+
+// ------------------------------------------------------------------ the old iTunes library, as a source of taste
+
+let oldLoad = null;
+/** Albums from the saved old library with their play counts, or null when there isn't one. */
+function oldLibrary() {
+  if (!Store.canArchive()) return Promise.resolve(null);
+  if (!oldLoad) {
+    oldLoad = (VAULT.data ? Promise.resolve(VAULT.data) : Store.loadVault().then(unpackArchive))
+      .then((d) => {
+        if (!d) { oldLoad = null; return null; }
+        VAULT.data = VAULT.data || d;
+        const albums = albumsOf(d).filter((x) => x.title !== "(no album)" && x.plays > 0 && !Catalog.isWorship(x));
+        const artistPlays = new Map();
+        for (const x of albums) artistPlays.set(norm(x.artist), (artistPlays.get(norm(x.artist)) || 0) + x.plays);
+        return { albums, artistPlays };
+      })
+      .catch(() => { oldLoad = null; return null; });
+  }
+  return oldLoad;
+}
+
+/** Old-library albums that fit a shelf: same artists or bands related to them, most-played first. */
+async function oldPicksFor(shelf, count, seed) {
+  const old = await oldLibrary();
+  if (!old || !count) return [];
+  const mine = new Set(shelf.albums.map((x) => norm(x.artist)));
+  const near = await Catalog.relatedNames(shelf.albums).catch(() => new Set());
+  const owned = ownedCheck();
+  const dismissedOld = new Set(S.raw?.meta?.dismissed?.old || []);
+  const fits = old.albums
+    .filter((x) => (mine.has(norm(x.artist)) || near.has(norm(x.artist))) && !owned(x) && !dismissedOld.has(x.k))
+    .sort((x, y) => y.plays - x.plays);
+  // Mostly the top of the list, with Shuffle bringing in others from near the top.
+  const pool = Catalog.shuffle(fits.slice(0, count * 3), Catalog.rng(seed)).slice(0, count).sort((x, y) => y.plays - x.plays);
+  const out = [];
+  for (const x of pool) {
+    const hit = await Catalog.find(x.artist, x.title).catch(() => null);
+    const base = hit || { deezerId: null, title: x.title, artist: x.artist, year: x.year, cover: "" };
+    out.push({ ...base, itunesId: hit ? base.itunesId : x.k, oldKey: x.k, reason: `${x.plays.toLocaleString()} plays in your iTunes` });
+  }
+  return out;
+}
 
 // ------------------------------------------------------------------ suggestions
 
@@ -328,7 +371,17 @@ async function fillSuggestions() {
       try {
         const owned = ownedCheck();
         const libArtists = new Set(allAlbums().map((a) => a.artistId).filter(Boolean));
-        entry.items = remember(await Catalog.suggest(shelf.albums, { n, seed: `${shelf.id}-${S.seeds[shelf.id] || 0}`, owned, libraryArtists: libArtists }));
+        const seed = `${shelf.id}-${S.seeds[shelf.id] || 0}`;
+        const old = await oldLibrary();
+        const nOld = old ? Math.ceil(n / 3) : 0;
+        const [fresh, mine] = await Promise.all([
+          Catalog.suggest(shelf.albums, { n, seed, owned, libraryArtists: libArtists, favorites: old?.artistPlays }),
+          oldPicksFor(shelf, nOld, seed),
+        ]);
+        // Every third card is from the old library, starting with the first.
+        const merged = [], rest = fresh.filter((x) => !mine.some((m) => m.deezerId && m.deezerId === x.deezerId));
+        while ((mine.length || rest.length) && merged.length < n) merged.push(merged.length % 3 === 0 && mine.length ? mine.shift() : rest.shift() || mine.shift());
+        entry.items = remember(merged);
       } catch (e) {
         entry.items = null;
         if (box.isConnected) items.innerHTML = `<div class="empty">${esc(e.message)} Use Shuffle to try again.</div>`;
@@ -340,7 +393,7 @@ async function fillSuggestions() {
     if (!entry.items?.length && hasArtists) delete S.sugg[shelf.id];
     if (!box.isConnected) continue;
     const owned = ownedCheck();
-    const list = (entry.items || []).filter((a) => !owned(a));
+    const list = (entry.items || []).filter((a) => !owned(a) && !Catalog.isWorship(a));
     items.className = `sug-items ${list.length ? layout : ""}`;
     items.innerHTML = list.length
       ? list.map((a) => suggestionCard(a, shelf.id)).join("")
@@ -808,9 +861,13 @@ view.addEventListener("click", async (e) => {
   }
   const dismiss = t.closest("[data-dismiss]");
   if (dismiss) {
-    const dz = Number(dismiss.dataset.dismiss);
-    dismiss.closest(".sug")?.remove();
-    write(() => Store.set("meta", "dismissed", { ids: [...new Set([...dismissed(), dz])] }));
+    const card = dismiss.closest(".sug");
+    const item = found.get(card?.dataset.dz || "");
+    card?.remove();
+    const prev = S.raw?.meta?.dismissed || {};
+    const ids = item?.deezerId ? [...new Set([...dismissed(), item.deezerId])] : [...dismissed()];
+    const old = item?.oldKey ? [...new Set([...(prev.old || []), item.oldKey])] : prev.old || [];
+    write(() => Store.set("meta", "dismissed", { ids, old }));
     return;
   }
   const refresh = t.closest("[data-refresh]");
@@ -966,6 +1023,10 @@ function renderNew() {
       <h2 class="section-label">From artists on your shelves</h2>
       <div class="grid" id="new-mine">${skeletons(6)}</div>
     </section>
+    <section class="new-sec" id="new-old-sec" hidden>
+      <h2 class="section-label">From artists you played most on iTunes</h2>
+      <div class="grid" id="new-old">${skeletons(6)}</div>
+    </section>
     <section class="new-sec">
       <h2 class="section-label">New from bands you might like</h2>
       <p class="meta" style="margin-bottom:14px">Bands closely related to several of your artists come first</p>
@@ -984,6 +1045,21 @@ async function loadNew() {
     const mine = await Catalog.newFrom(artists, since);
     fill("#new-mine", mine.map((a) => newCard(a, shelfOf.get(a.artistId), `Released ${monthDay(a.released)}`)).join(""),
       "None of your artists have released anything in the last 12 months.");
+    const old = await oldLibrary();
+    if (old) {
+      $("#new-old-sec") && ($("#new-old-sec").hidden = false);
+      const shelfNames = new Set([...artists.values()].map(norm));
+      const top = [...old.artistPlays].filter(([n]) => !shelfNames.has(n)).sort((x, y) => y[1] - x[1]).slice(0, 30);
+      const names = new Map(old.albums.map((x) => [norm(x.artist), x.artist]));
+      const ids = new Map(), playsOf = new Map();
+      for (const [n, plays] of top) {
+        const hit = await Catalog.findArtist(names.get(n)).catch(() => null);
+        if (hit && !artists.has(hit.id)) { ids.set(hit.id, hit.name); playsOf.set(hit.id, plays); }
+      }
+      const fromOld = await Catalog.newFrom(ids, since);
+      fill("#new-old", fromOld.map((a) => newCard(a, "", `Released ${monthDay(a.released)} · ${playsOf.get(a.artistId)?.toLocaleString()} old plays`)).join(""),
+        "Nothing new from the artists you played most.");
+    }
     const near = (await Catalog.newNearby(artists, since)).slice(0, 24);
     fill("#new-near", near.map((a) => newCard(a, byName.get(a.because[0]),
       `Like ${a.because.slice(0, 2).join(" & ")}${a.because.length > 2 ? ` +${a.because.length - 2}` : ""} · ${monthDay(a.released)}`)).join(""),
@@ -1040,7 +1116,7 @@ function choreItems() {
   if (!c?.items) return [];
   const skipped = new Set(c.skipped || []);
   const owned = new Set(allAlbums().map((a) => norm(a.title) + "|" + norm(a.artist)));
-  return c.items.filter((i) => !skipped.has(i.k) && !owned.has(i.k));
+  return c.items.filter((i) => !skipped.has(i.k) && !owned.has(i.k) && !Catalog.isWorship(i));
 }
 
 async function refreshChores() {

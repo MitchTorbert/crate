@@ -234,7 +234,53 @@ const Catalog = (() => {
   }
 
   /** Deeper cuts from the shelf's artists plus well-known albums by related bands. */
-  async function suggest(shelfAlbums, { n = 8, seed = "0", owned = () => false, libraryArtists = new Set() } = {}) {
+  // ---------------------------------------------------------------- worship filter
+  // Deliberately narrow: explicit worship/praise acts and titles, not "Christian" in general,
+  // so bands from that scene (Underoath, mewithoutYou, P.O.D., Switchfoot...) stay in.
+
+  const WORSHIP_ARTISTS = new Set([
+    "hillsong", "hillsongunited", "hillsongworship", "hillsongyoungfree", "bethelmusic", "elevationworship", "jesusculture", "passion",
+    "maverickcity", "maverickcitymusic", "christomlin", "philwickham", "karijobe", "shaneshane", "shaneandshane", "davidcrowderband",
+    "crowder", "allsonsdaughters", "housefires", "verticalworship", "upperroom", "planetshakers", "mattredman", "michaelwsmith",
+    "brandonlake", "coryasbury", "redrocksworship", "gatewayworship", "worshipcentral", "rendcollective", "sovereigngracemusic",
+    "keithkristyngetty", "citizenssaints", "leeland", "kimwalkersmith", "steffanygretzinger", "amandacook", "darlenezschech",
+    "israelhoughton", "tashacobbs", "traviscottrell", "thebelongingco", "castingcrowns", "mercyme", "lincolnbrewster",
+    "paulbaloche", "timhughes", "charliehall", "mattmaher", "jeremyriddle", "newlifeworship", "northpointworship", "chrisquilala",
+    "forkingcountry", "laurendaigle", "tobymac", "thirdday", "tenthavenuenorth", "jeremycamp", "zachwilliams", "dannygokey",
+    "kutless", "sanctusreal", "audreyassad", "gungor", "starfield", "desperationband",
+    "shanebarnard", "davidcrowder", "craigdeanphillips", "darrellevans", "eoghanheaslip", "delirious", "toddagnew",
+    "aaronshust", "brentonbrown", "davidruis", "jeffdeyo", "kristianstanfill", "drawmeclosetoyou", "vineyardworship",
+    "sonicflood", "jasonupton", "reubenmorgan", "jamismith", "christforthenationsmusic", "briandoerksen", "kevinprosch",
+    "carltuttle", "kathrynscott", "tommywalker", "mariebarnett", "terrybutler", "craigmusseau", "kellycarpenter", "andypark",
+    "hillsonglive", "enterworshipcircle", "pinecoveworship", "integritys hosanna music".replace(/ /g, ""), "maranathamusic", "wowworship",
+  ]);
+  // Title words only where they almost always mean worship ("Rhythm & Hymns" by Mattafix is trip-hop).
+  const WORSHIP_TITLE = /\b(worship\w*|praise and worship|praise & worship)\b/i;
+
+  const worshipName = (s) => { const n = norm(s); return WORSHIP_ARTISTS.has(n) || /worship|hillsong|bethelmusic|wowhits|vineyard/.test(n); };
+
+  function isWorship(a) {
+    // Old libraries sometimes have artist and album swapped, so both are checked as names.
+    return worshipName(a.artist) || worshipName(a.title) || WORSHIP_TITLE.test(a.title || "") ||
+      /\bsermons?\b/i.test(a.title || "") || /worship|praise/i.test(a.genre || "");
+  }
+
+  /** Names of bands Deezer lists as related to this shelf's artists (normalized). */
+  async function relatedNames(shelfAlbums, max = 6) {
+    const ids = [...new Set(shelfAlbums.map((a) => a.artistId).filter(Boolean))].slice(0, max);
+    const out = new Set();
+    for (const id of ids) for (const x of (await related(id).catch(() => [])).slice(0, 10)) out.add(norm(x.name));
+    return out;
+  }
+
+  /** Deezer's artist for a name, when the match is close. */
+  async function findArtist(name) {
+    const d = await call("/search/artist", { q: name, limit: 3 });
+    const best = (d?.data || []).map((a) => [sim(a.name, name), a]).sort((x, y) => y[0] - x[0])[0];
+    return best && best[0] >= 0.85 ? { id: best[1].id, name: best[1].name } : null;
+  }
+
+  async function suggest(shelfAlbums, { n = 8, seed = "0", owned = () => false, libraryArtists = new Set(), favorites = new Map() } = {}) {
     const r = rng(seed);
     const artists = new Map();
     for (const a of shelfAlbums) if (a.artistId) artists.set(a.artistId, a.artist);
@@ -243,11 +289,17 @@ const Catalog = (() => {
 
     const deep = [], rel = [];
     for (const [id, name] of seeds) {
-      for (const a of await artistAlbums(id)) if (!owned(a)) deep.push({ ...a, reason: `More ${name}` });
+      for (const a of await artistAlbums(id)) if (!owned(a) && !isWorship(a)) deep.push({ ...a, reason: `More ${name}` });
       for (const x of (await related(id)).slice(0, 6)) if (!libraryArtists.has(x.id)) rel.push([x, name]);
     }
+    // Bands you played a lot in your old library come first, most-played first.
+    const favPlays = ([x]) => favorites.get(norm(x.name)) || 0;
+    const ordered = [
+      ...shuffle(rel.filter((t) => favPlays(t)), r).sort((a, b) => favPlays(b) - favPlays(a)),
+      ...shuffle(rel.filter((t) => !favPlays(t)), r),
+    ];
     const picked = [], seenArtists = new Set();
-    for (const [x, name] of shuffle(rel, r)) {
+    for (const [x, name] of ordered) {
       if (seenArtists.has(x.id)) continue;
       seenArtists.add(x.id);
       picked.push([x, name]);
@@ -256,7 +308,9 @@ const Catalog = (() => {
     const similar = [];
     for (const [x, name] of picked) {
       const albums = (await artistAlbums(x.id)).filter((a) => !owned(a)).sort((a, b) => b.fans - a.fans);
-      if (albums.length) similar.push({ ...albums[Math.floor(r() * Math.min(2, albums.length))], reason: `If you like ${name}` });
+      const plays = favorites.get(norm(x.name));
+      const pool = albums.filter((a) => !isWorship(a));
+      if (pool.length) similar.push({ ...pool[Math.floor(r() * Math.min(2, pool.length))], reason: plays ? `${plays} plays in your iTunes` : `If you like ${name}` });
     }
     const d = shuffle(deep, r);
     const nDeep = Math.min(d.length, Math.max(2, Math.floor(n / 3)));
@@ -272,7 +326,7 @@ const Catalog = (() => {
     const out = [];
     for (const [id, name] of artists) {
       for (const a of await artistAlbums(id, { name, types: ["album", "ep"] }).catch(() => [])) {
-        if (a.released >= since) out.push(a);
+        if (a.released >= since && !isWorship(a)) out.push(a);
       }
     }
     return out.sort((a, b) => b.released.localeCompare(a.released));
@@ -296,7 +350,7 @@ const Catalog = (() => {
     const out = [];
     for (const [id, e] of top) {
       // One release per band, its newest, so a busy band can't fill the page.
-      const fresh = (await artistAlbums(id, { name: e.name }).catch(() => [])).filter((a) => a.released >= since)
+      const fresh = (await artistAlbums(id, { name: e.name }).catch(() => [])).filter((a) => a.released >= since && !isWorship(a))
         .sort((a, b) => b.released.localeCompare(a.released));
       if (fresh.length) out.push({ ...fresh[0], because: e.because, weight: e.because.length });
     }
@@ -323,5 +377,5 @@ const Catalog = (() => {
     return "";
   }
 
-  return { search, find, toDeezer, sim, detail, newFrom, newNearby, artistAlbums, related, suggest, norm, ytSearchUrl, resolveYouTube, rng, shuffle };
+  return { search, find, toDeezer, sim, detail, newFrom, newNearby, isWorship, relatedNames, findArtist, artistAlbums, related, suggest, norm, ytSearchUrl, resolveYouTube, rng, shuffle };
 })();

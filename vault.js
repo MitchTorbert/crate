@@ -436,7 +436,8 @@ function vaultBrowse(d) {
   const years = {};
   for (const a of albums) if (a.added) { const y = a.added.slice(0, 4); years[y] = (years[y] || 0) + 1; }
   const q = VAULT.q.toLowerCase();
-  let list = albums.filter((a) => (!VAULT.year || (a.added || "").startsWith(VAULT.year)) && (!q || `${a.title} ${a.artist} ${a.genre}`.toLowerCase().includes(q)));
+  const worship = albums.filter((a) => Catalog.isWorship(a)).length;
+  let list = albums.filter((a) => (VAULT.showWorship || !Catalog.isWorship(a)) && (!VAULT.year || (a.added || "").startsWith(VAULT.year)) && (!q || `${a.title} ${a.artist} ${a.genre}`.toLowerCase().includes(q)));
   const sorters = {
     plays: (a, b) => b.plays - a.plays, added: (a, b) => (b.added || "").localeCompare(a.added || ""), oldest: (a, b) => (a.added || "~").localeCompare(b.added || "~"),
     rating: (a, b) => b.stars - a.stars || b.plays - a.plays, artist: (a, b) => a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title),
@@ -465,6 +466,8 @@ function vaultBrowse(d) {
           .map(([v, l]) => `<option value="${v}" ${VAULT.sort === v ? "selected" : ""}>${l}</option>`).join("")}
       </select>
     </div>
+    ${worship ? `<p class="meta" style="text-transform:none;letter-spacing:0;margin:0 0 10px">${VAULT.showWorship ? `Showing ${worship} worship albums.` : `${worship} worship albums hidden.`}
+      <button class="link" id="vault-worship">${VAULT.showWorship ? "Hide them" : "Show them"}</button></p>` : ""}
     <div class="year-chips">
       <button class="chip ${VAULT.year ? "" : "on"}" data-vyear="">All years</button>
       ${Object.keys(years).sort().map((y) => `<button class="chip ${VAULT.year === y ? "on" : ""}" data-vyear="${y}">Added ${y} <span>${years[y]}</span></button>`).join("")}
@@ -506,6 +509,7 @@ function wireVault() {
   const s = document.getElementById("vault-sort");
   if (s) s.onchange = () => { VAULT.sort = s.value; VAULT.shown = 120; render(); };
   document.getElementById("vault-more")?.addEventListener("click", () => { VAULT.shown += 200; render(); });
+  document.getElementById("vault-worship")?.addEventListener("click", () => { VAULT.showWorship = !VAULT.showWorship; render(); });
   document.getElementById("vault-backup")?.addEventListener("click", downloadBackup);
   document.getElementById("vault-original")?.addEventListener("click", downloadOriginal);
   document.getElementById("vault-redo")?.addEventListener("click", () => { VAULT.data = null; VAULT.verified = false; VAULT.checked = true; VAULT.fileOnly = null; view.innerHTML = `<h1 class="page-title">Old hard drive</h1>${vaultImport()}`; wireVault(); });
