@@ -6,7 +6,7 @@ const VAULT = { data: null, loading: false, status: "", tab: "albums", sort: "pl
 
 // Track rows are stored as arrays to keep the archive small. Order matters.
 const TF = ["id", "name", "artist", "albumArtist", "album", "genre", "year", "trackNo", "discNo", "ms",
-  "plays", "lastPlayed", "added", "rating", "loved", "skips", "kind", "path", "compilation", "composer"];
+  "plays", "lastPlayed", "added", "rating", "loved", "skips", "kind", "path", "compilation", "composer", "modified"];
 
 // ------------------------------------------------------------------ reading an iTunes library file
 
@@ -61,11 +61,12 @@ function decodeLocation(loc) {
 }
 
 // ------------------------------------------------------------------ reading an iTunes .itl file
-// The .itl format is Apple's own and undocumented; this follows the layout worked out by
-// open-source readers. The body is AES-128-ECB encrypted (a fixed, widely published key)
-// for a leading stretch of bytes, then zlib-compressed. Inside is a run of tagged chunks:
-// "htim" starts a song, "hohm" holds one text field, "hpim" starts a playlist, "hptm" is
-// one playlist entry.
+// The .itl format is Apple's own and undocumented. The body is AES-128-ECB encrypted (a
+// fixed, widely published key) for a leading stretch of bytes, then zlib-compressed. Inside
+// is a run of tagged chunks: "htim" starts a song, "hohm" holds one text field, "hpim"
+// starts a playlist, "hptm" is one playlist entry. Older files are big-endian; iTunes 10+
+// files are little-endian, which also reverses the tags ("mith", "mhoh", "miph", "mtph").
+// Song field positions below were confirmed against a real iTunes 12.1 library.
 
 const ITL_KEY = "BHUILuilfghuila3";
 
@@ -106,57 +107,75 @@ async function decryptItl(buf) {
   throw new Error("This .itl file couldn't be decoded here.");
 }
 
-function hohmText(d, dv, pos, total) {
+function hohmText(d, dv, pos, total, le) {
   if (total < 40) return null;
-  const enc = dv.getUint32(pos + 24), len = dv.getUint32(pos + 28);
+  const enc = dv.getUint32(pos + 24, le), len = dv.getUint32(pos + 28, le);
   if (len <= 0 || 40 + len > total) return null;
   const bytes = d.subarray(pos + 40, pos + 40 + len);
-  let zeros = 0;
-  for (let i = 0; i < bytes.length; i += 2) if (bytes[i] === 0) zeros++;
-  const utf16 = enc === 1 || (len % 2 === 0 && zeros > bytes.length / 4);
-  try { return new TextDecoder(utf16 ? "utf-16be" : "utf-8", { fatal: !utf16 }).decode(bytes); }
+  // 1 = UTF-16 (in the file's byte order); 2 = plain ASCII; 3 = UTF-8.
+  if (enc === 1) return new TextDecoder(le ? "utf-16le" : "utf-16be").decode(bytes);
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
   catch { return new TextDecoder("latin1").decode(bytes); }
 }
 
-const HOHM = { 0x02: "name", 0x03: "album", 0x04: "artist", 0x05: "genre", 0x06: "kind", 0x0C: "composer", 0x0D: "path", 0x0B: "url", 0x1B: "albumArtist" };
+const HOHM = { 0x02: "name", 0x03: "album", 0x04: "artist", 0x05: "genre", 0x06: "kind", 0x0D: "path", 0x0B: "url", 0x1B: "albumArtist" };
+const MAC_EPOCH = 2082844800; // seconds from 1904-01-01 to 1970-01-01
+const macDate = (s) => (s > MAC_EPOCH ? new Date((s - MAC_EPOCH) * 1000).toISOString().slice(0, 19) + "Z" : "");
+// Built-in lists every library has; "####!####" is the hidden whole-library list.
+const BUILT_IN = /^(####!####|Library|Music|Movies|TV Shows|Podcasts|Audiobooks|Books|Purchased|Genius|iTunes U|Voice Memos|Home Videos|Music Videos|Tones|Rentals)$/i;
 
 function parseItlChunks(d) {
   const dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
+  const le = tagAt(d, 0) === "msdh";
+  const tag = (t) => (le ? [...t].reverse().join("") : t);
+  const T = { song: tag("htim"), text: tag("hohm"), list: tag("hpim"), item: tag("hptm") };
+  const u32 = (p) => dv.getUint32(p, le);
   const tracks = new Map(), playlists = [];
   let track = null, pl = null, pos = 0;
   while (pos + 12 <= d.length) {
     const t = tagAt(d, pos);
-    const hl = /^h[a-z]{3}$/.test(t) ? dv.getUint32(pos + 4) : 0;
+    const hl = /^[a-z]{4}$/.test(t) ? u32(pos + 4) : 0;
     if (hl < 8 || hl > 1e6 || pos + hl > d.length) { pos++; continue; } // not a chunk start: resync
-    if (t === "hohm") {
-      const total = dv.getUint32(pos + 8);
+    if (t === T.text) {
+      const total = u32(pos + 8);
       if (total < hl || pos + total > d.length) { pos++; continue; }
-      const type = dv.getUint32(pos + 12);
-      const text = hohmText(d, dv, pos, total);
+      const type = u32(pos + 12);
+      const text = hohmText(d, dv, pos, total, le);
       if (text != null) {
-        if (pl && type === 0x64) pl.name = text;
+        if (pl && type === 0x64) pl.name = pl.name || text;
         else if (track && HOHM[type] && !track[HOHM[type]]) track[HOHM[type]] = text;
       }
       pos += total;
       continue;
     }
-    if (t === "htim") { track = { id: dv.getUint32(pos + 16) }; tracks.set(track.id, track); pl = null; }
-    else if (t === "hpim") { pl = { name: "", raw: [] }; playlists.push(pl); track = null; }
-    else if (t === "hptm" && pl) pl.raw.push(d.slice(pos, pos + hl));
+    if (t === T.song) {
+      track = { id: u32(pos + 16) };
+      if (le && hl >= 224) {
+        Object.assign(track, {
+          modified: macDate(u32(pos + 32)), ms: u32(pos + 40) || null, trackNo: u32(pos + 44) || null,
+          year: u32(pos + 52) || null, plays: u32(pos + 76), lastPlayed: macDate(u32(pos + 100)),
+          added: macDate(u32(pos + 120)), skips: u32(pos + 216),
+        });
+      }
+      tracks.set(track.id, track);
+      pl = null;
+    }
+    else if (t === T.list) { pl = { name: "", raw: [] }; playlists.push(pl); track = null; }
+    else if (t === T.item && pl) pl.raw.push(d.slice(pos, pos + hl));
     pos += hl;
   }
-  // Which field of a playlist entry holds the song id isn't certain; use the one that matches songs.
+  // The song id inside a playlist entry is at byte 24 in files seen so far; check the neighbours too.
   let best = 24, bestHits = -1;
   for (let off = 8; off <= 40; off += 4) {
     let hits = 0;
-    for (const p of playlists) for (const r of p.raw) if (r.length >= off + 4 && tracks.has(new DataView(r.buffer).getUint32(off))) hits++;
+    for (const p of playlists) for (const r of p.raw) if (r.length >= off + 4 && tracks.has(new DataView(r.buffer).getUint32(off, le))) hits++;
     if (hits > bestHits) { best = off; bestHits = hits; }
   }
   const pls = playlists.map((p) => ({
     name: p.name || "Untitled", smart: false,
-    items: p.raw.filter((r) => r.length >= best + 4).map((r) => new DataView(r.buffer).getUint32(best)).filter((id) => tracks.has(id)),
-  })).filter((p) => p.items.length && !/^(Library|Music|Movies|TV Shows|Podcasts|Audiobooks|Books|Purchased|Genius|iTunes U|Voice Memos)$/i.test(p.name));
-  return { tracks: [...tracks.values()], playlists: pls };
+    items: p.raw.filter((r) => r.length >= best + 4).map((r) => new DataView(r.buffer).getUint32(best, le)).filter((id) => tracks.has(id)),
+  })).filter((p) => p.items.length && !BUILT_IN.test(p.name));
+  return { tracks: [...tracks.values()], playlists: pls, full: le };
 }
 
 async function parseItl(file) {
@@ -165,20 +184,22 @@ async function parseItl(file) {
   let decoded = null, problem = "";
   try {
     const { version, data } = await decryptItl(buf);
-    const { tracks, playlists } = parseItlChunks(data);
-    const songs = tracks.filter((t) => t.name && !/video|podcast|book|movie/i.test(t.kind || ""));
+    const { tracks, playlists, full } = parseItlChunks(data);
+    const notMusic = (t) => /video|podcast|book|movie/i.test(t.kind || "") || /podcast/i.test(t.genre || "") || /\/(Podcasts|Movies|TV Shows|Books)\//.test(decodeLocation(t.url) || "");
+    const songs = tracks.filter((t) => t.name && !notMusic(t));
     if (!songs.length) throw new Error("No songs were found inside the file.");
     decoded = {
       version,
-      tracks: songs.map((t) => [t.id, t.name || "", t.artist || "", t.albumArtist || "", t.album || "", t.genre || "", null, null, null, null,
-        0, "", "", 0, 0, 0, t.kind || "", t.path || t.url || "", 0, t.composer || ""]),
-      playlists,
+      tracks: songs.map((t) => [t.id, t.name || "", t.artist || "", t.albumArtist || "", t.album || "", t.genre || "", t.year || null,
+        t.trackNo || null, null, t.ms || null, t.plays || 0, t.lastPlayed || "", t.added || "", 0, 0, t.skips || 0, t.kind || "",
+        decodeLocation(t.url) || t.path || "", 0, "", t.modified || ""]),
+      playlists, full,
     };
   } catch (e) { problem = e.message; }
   return {
     source: "iTunes library (.itl)" + (decoded ? `, iTunes ${decoded.version}` : ""),
     tracks: decoded?.tracks || [], playlists: decoded?.playlists || [], raw, rawName: file.name, problem,
-    partial: !!decoded,
+    partial: !!decoded && !decoded.full,
   };
 }
 
@@ -353,7 +374,9 @@ function albumsOf(data) {
     const a = byKey.get(k) || { k, title: t.album || "(no album)", artist, year: t.year, genre: t.genre, songs: 0, plays: 0, last: "", added: "", rated: [], loved: 0 };
     a.songs++; a.plays += t.plays || 0;
     if (t.lastPlayed > a.last) a.last = t.lastPlayed;
-    if (t.added && (!a.added || t.added < a.added)) a.added = t.added;
+    // A rebuilt library resets "date added"; the file's own date is often the truer "when I got it".
+    const got = [t.added, t.modified].filter(Boolean).sort()[0];
+    if (got && (!a.added || got < a.added)) a.added = got;
     if (t.rating) a.rated.push(t.rating);
     a.loved += t.loved || 0;
     if (!a.year && t.year) a.year = t.year;
