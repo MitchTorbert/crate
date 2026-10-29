@@ -40,6 +40,7 @@ function rebuild() {
     shelves: shelves.map((s, i) => ({
       ...s, note: s.note || "", color: s.color || PALETTE[i % PALETTE.length],
       image: raw.images[s.id]?.data || "",
+      cover: raw.images[s.id] || null,
       albums: (byShelf[s.id] || []).sort((a, b) => a.pos - b.pos),
     })),
   };
@@ -82,7 +83,7 @@ async function addAlbum(a, shelfId) {
   }
   const same = (x) => (a.deezerId && x.deezerId === a.deezerId) || Catalog.albumKey(x.title, x.artist) === Catalog.albumKey(a.title, a.artist);
   // An album can sit on several shelves, but only once per shelf.
-  if (s.albums.some(same)) { toast(`${a.title} is already on ${s.name}.`); return null; }
+  if (s.albums.some(same)) { toast(`${a.title} is already in ${s.name}.`); return null; }
   const other = allAlbums().find(same); // reuse what another copy already knows (cover, album link)
   const body = {
     shelfId, pos: posAt(s.albums, 0), title: other?.title || a.title, artist: other?.artist || a.artist, artistId: a.artistId ?? other?.artistId ?? null,
@@ -165,7 +166,7 @@ function parseTyped(text) {
 
 // ------------------------------------------------------------------ staying up to date
 
-const FILES = ["./", "index.html", "style.css", "app.js", "catalog.js", "store.js", "vault.js", "history.js", "config.js", "manifest.webmanifest", "version.json"];
+const FILES = ["./", "index.html", "style.css", "app.js", "catalog.js", "store.js", "vault.js", "history.js", "crates.js", "config.js", "manifest.webmanifest", "version.json"];
 
 /** Re-download every file past the browser's cache, then reload. */
 async function hardRefresh() {
@@ -201,10 +202,7 @@ function wireTheme() {
 }
 
 function renderRail() {
-  $("#shelf-nav").innerHTML = S.lib.shelves.map((s) => `
-    <a class="rail-link" href="#shelf-${s.id}" data-shelf="${s.id}">
-      <span class="rail-name"><i class="dot" style="background:${esc(s.color)}"></i>${esc(s.name)}</span><span class="count">${s.albums.length}</span>
-    </a>`).join("");
+  $("#shelf-nav").innerHTML = S.lib.shelves.map((s) => crateCard(s)).join("");
   markActive();
 }
 
@@ -234,7 +232,7 @@ function markActive() {
   const el = $("#chores-count");
   if (el) el.textContent = n ? n : "";
   const r = S.route;
-  document.querySelectorAll(".rail-link").forEach((a) => {
+  document.querySelectorAll(".rail-link, .crate-card[href]").forEach((a) => {
     a.classList.toggle("active", (a.dataset.route && a.dataset.route === r.name) || (r.name === "shelf" && a.dataset.shelf === r.id));
   });
 }
@@ -278,7 +276,7 @@ function albumCard(a, { draggable = false } = {}) {
 function alsoOn(a) {
   const others = (S.copies?.get(Catalog.albumKey(a.title, a.artist)) || []).filter((id) => id !== a.shelfId).map(shelfById).filter(Boolean);
   if (!others.length) return "";
-  return `<span class="also" title="Also on ${esc(others.map((s) => s.name).join(", "))}">${others.map((s) => `<i class="dot" style="background:${esc(s.color)}"></i>`).join("")}</span>`;
+  return `<span class="also" title="Also in ${esc(others.map((s) => s.name).join(", "))}">${others.map((s) => `<i class="dot" style="background:${esc(s.color)}"></i>`).join("")}</span>`;
 }
 
 const shelfOptions = (selected) =>
@@ -302,7 +300,7 @@ function suggestionCard(a, target) {
     <div class="album-sub"><span class="artist">${esc(a.artist)}</span><span class="yr">${a.year ?? ""}</span></div>
     ${foundNote(a) ? `<div class="reason" title="${esc(foundNote(a))}">${esc(foundNote(a))}</div>` : ""}
     <div class="add-row">
-      <select aria-label="Shelf to add ${esc(a.title)} to">${shelfOptions(target)}</select>
+      <select aria-label="Crate to add ${esc(a.title)} to">${shelfOptions(target)}</select>
       <button class="btn primary" data-add="${keyOf(a)}">Add</button>
     </div>
   </div>`;
@@ -365,7 +363,7 @@ function suggestBlock(shelf, title, n, layout) {
   <section class="suggest" data-suggest="${shelf.id}" data-n="${n}" data-layout="${layout}">
     <div class="suggest-head">
       <h3>${esc(title)}</h3>
-      <span class="meta">From artists on this shelf and the bands around them</span>
+      <span class="meta">From artists in this crate and the bands around them</span>
       <button class="btn" data-refresh="${shelf.id}">Shuffle</button>
     </div>
     ${liveBox({ shelfId: shelf.id, placeholder: `Have one in mind? Search to add it to ${shelf.name}` })}
@@ -414,7 +412,7 @@ async function fillSuggestions() {
       ? list.map((a) => suggestionCard(a, shelf.id)).join("")
       : hasArtists
         ? `<div class="empty">Couldn't load suggestions just now. Use Shuffle to try again.</div>`
-        : `<div class="empty">Suggestions come from the artists on this shelf. Search above to add the first few.</div>`;
+        : `<div class="empty">Suggestions come from the artists in this crate. Search above to add the first few.</div>`;
   }
 }
 
@@ -454,7 +452,7 @@ function renderLiveList(form, results, q) {
   const typed = parseTyped(q);
   list.innerHTML = `
     ${fixed ? `<div class="live-head">Adding to <b>${esc(shelfById(fixed)?.name)}</b></div>`
-            : `<div class="live-head">Add to <select class="live-shelf" aria-label="Shelf to add to">${shelfOptions(target)}</select></div>`}
+            : `<div class="live-head">Add to <select class="live-shelf" aria-label="Crate to add to">${shelfOptions(target)}</select></div>`}
     ${results.map((a) => {
       const have = owned(a);
       return `
@@ -537,10 +535,9 @@ function goSearch(q) {
 // ------------------------------------------------------------------ views
 
 function shelfAttrs(s) {
-  const style = `--shelf:${esc(s.color)};${s.image ? `--img:url('${s.image}')` : ""}`;
-  return `class="shelf${s.image ? " has-image" : ""}" style="${style}"`;
+  return `class="shelf" style="--shelf:${esc(s.color)}"`;
 }
-const swatch = (s) => `<button class="swatch" data-color-for="${s.id}" aria-label="Change color or image for ${esc(s.name)}" title="Color or image"></button>`;
+const swatch = (s) => `<button class="swatch" data-color-for="${s.id}" aria-label="Color, cover and font for ${esc(s.name)}" title="Color, cover and font"></button>`;
 
 function recentList(albums) {
   return `<div class="list">${albums.map((a) => `
@@ -553,7 +550,7 @@ function recentList(albums) {
 
 function renderHome() {
   if (!S.lib.shelves.length) {
-    view.innerHTML = `<div class="empty offline">No shelves yet. Name your first one in “New shelf…”.</div>`;
+    view.innerHTML = `<div class="empty offline">No crates yet. Name your first one in “New crate…”.</div>`;
     return;
   }
   const recent = allAlbums().sort((a, b) => b.addedAt - a.addedAt).slice(0, 8);
@@ -562,16 +559,18 @@ function renderHome() {
     ${order.map((s) => `
       <section ${shelfAttrs(s)}>
         <div class="shelf-head">
-          <h2 class="shelf-title"><a href="#shelf-${s.id}">${esc(s.name)}</a></h2>
-          ${swatch(s)}
-          <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
+          ${crateCard(s, { cls: "crate-card crate-hero home-hero", title: "h2", count: false })}
+          <div class="head-row">
+            ${swatch(s)}
+            <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
+            ${s.albums.length > HOME_LIMIT ? `<a class="see-all" href="#shelf-${s.id}">All ${s.albums.length} →</a>` : ""}
+          </div>
           ${s.note ? `<p class="note">${esc(s.note)}</p>` : ""}
-          ${s.albums.length > HOME_LIMIT ? `<a class="see-all" href="#shelf-${s.id}">All ${s.albums.length} →</a>` : ""}
         </div>
         ${s.albums.length
           ? `<div class="grid">${s.albums.slice(0, HOME_LIMIT).map((a) => albumCard(a)).join("")}</div>`
           : `<div class="empty">Nothing here yet. Search below to add the first album.</div>`}
-        ${suggestBlock(s, `Fits on ${s.name}`, 8, "strip")}
+        ${suggestBlock(s, `Fits in ${s.name}`, 8, "strip")}
       </section>`).join("")}
     ${recent.length ? `
       <section class="shelf plain">
@@ -584,7 +583,7 @@ function renderHome() {
 function renderShelf(id) {
   const s = shelfById(id);
   if (!s) {
-    if (S.pendingShelf === id) { view.innerHTML = `<div class="empty offline">Setting up your shelf…</div>`; return; }
+    if (S.pendingShelf === id) { view.innerHTML = `<div class="empty offline">Setting up your crate…</div>`; return; }
     location.hash = "home";
     return;
   }
@@ -594,24 +593,25 @@ function renderShelf(id) {
   view.innerHTML = `
     <section ${shelfAttrs(s)}>
       <div class="shelf-head" id="shelf-head">
-        <h1 class="shelf-title">${esc(s.name)}</h1>
+        ${crateCard(s, { tag: "div", cls: "crate-card crate-hero", title: "h1", count: false })}
         ${swatch(s)}
         <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
         <div class="head-actions">
+          <button class="btn" data-act="cover">Cover &amp; font</button>
           <button class="btn" data-act="list">Add a list</button>
           <button class="btn" data-act="rename">Rename</button>
           <button class="btn" data-act="note">${s.note ? "Edit note" : "Add a note"}</button>
-          <button class="btn" data-act="up" ${i === 0 ? "disabled" : ""} aria-label="Move shelf up">↑</button>
-          <button class="btn" data-act="down" ${i === S.lib.shelves.length - 1 ? "disabled" : ""} aria-label="Move shelf down">↓</button>
-          <button class="btn danger" data-act="delete">Delete shelf</button>
+          <button class="btn" data-act="up" ${i === 0 ? "disabled" : ""} aria-label="Move crate up">↑</button>
+          <button class="btn" data-act="down" ${i === S.lib.shelves.length - 1 ? "disabled" : ""} aria-label="Move crate down">↓</button>
+          <button class="btn danger" data-act="delete">Delete crate</button>
         </div>
         ${s.note ? `<p class="note">${esc(s.note)}</p>` : ""}
       </div>
       ${S.list?.shelfId === s.id ? listForm(s) : ""}
       ${s.albums.length
         ? `<div class="grid" id="shelf-grid">${s.albums.map((a) => albumCard(a, { draggable: true })).join("")}</div>
-           <p class="meta" style="margin-top:18px">Drag covers to reorder, or drop one on a shelf in the sidebar to move it.</p>`
-        : `<div class="empty">This shelf is empty. Search below to add the first album.</div>`}
+           <p class="meta" style="margin-top:18px">Drag covers to reorder, or drop one in a crate in the sidebar to move it.</p>`
+        : `<div class="empty">This crate is empty. Search below to add the first album.</div>`}
       ${suggestBlock(s, `Suggested for ${s.name}`, 18, "grid")}
     </section>`;
   fillSuggestions();
@@ -649,7 +649,7 @@ async function renderSearch() {
   const target = S.lastShelf || S.lib.shelves[0]?.id;
   view.innerHTML = `
     <h1 class="page-title">${esc(q)}</h1>
-    <p class="meta" style="margin-bottom:18px">Albums matching your search · pick a shelf on each one</p>
+    <p class="meta" style="margin-bottom:18px">Albums matching your search · pick a crate on each one</p>
     <div class="grid" id="results">${skeletons(6)}</div>`;
   let results;
   try { results = remember(await Catalog.search(q, 40)); }
@@ -728,7 +728,7 @@ function openMenu(btn, albumId) {
   menu.innerHTML = `
     <div class="label">Move to</div>
     ${S.lib.shelves.map((s) => `<button data-move="${s.id}" ${s.id === a.shelf.id ? "disabled" : ""}><i class="dot" style="background:${esc(s.color)}"></i>${esc(s.name)}${s.id === a.shelf.id ? " · here" : on.has(s.id) ? " · also here" : ""}</button>`).join("")}
-    ${elsewhere.length ? `<hr><div class="label">Also put on</div>
+    ${elsewhere.length ? `<hr><div class="label">Also put in</div>
     ${elsewhere.map((s) => `<button data-copy="${s.id}"><i class="dot" style="background:${esc(s.color)}"></i>${esc(s.name)}</button>`).join("")}` : ""}
     <hr>
     <div class="label">YouTube Music link</div>
@@ -780,7 +780,7 @@ function openColorMenu(btn, shelfId) {
   menuFor = { kind: "color", id: shelfId };
   btn.setAttribute("aria-expanded", "true");
   menu.innerHTML = `
-    <div class="label">Shelf color</div>
+    <div class="label">Crate color</div>
     <div class="swatches">${PALETTE.map((c) => `<button class="sw ${c === s.color ? "on" : ""}" data-pick="${c}" style="background:${c}" aria-label="Use ${c}"></button>`).join("")}</div>
     <form class="hexrow" id="hex-form">
       <input type="color" id="c-pick" value="${esc(s.color)}" aria-label="Pick any color">
@@ -788,9 +788,7 @@ function openColorMenu(btn, shelfId) {
       <button class="btn">Set</button>
     </form>
     <hr>
-    <button data-upload="1">${s.image ? "Replace" : "Add"} a header image…</button>
-    ${s.image ? `<button data-clearimg="1">Remove the image</button>` : ""}
-    <input type="file" id="c-file" accept="image/*" hidden>`;
+    <button data-cover="1">Cover &amp; font…</button>`;
   placeMenu(btn, false);
   const pick = $("#c-pick"), hex = $("#c-hex");
   pick.oninput = () => { hex.value = pick.value; previewColor(shelfId, pick.value); };
@@ -801,7 +799,6 @@ function openColorMenu(btn, shelfId) {
     if (!/^#[0-9a-f]{6}$/i.test(v)) { toast("Use a 6-digit hex color like #8a4bd6."); return; }
     setColor(shelfId, v.toLowerCase());
   };
-  $("#c-file").onchange = (e) => e.target.files[0] && setHeader(shelfId, e.target.files[0]);
 }
 
 function previewColor(shelfId, color) {
@@ -836,6 +833,7 @@ menu.addEventListener("click", async (e) => {
   if (menuFor.kind === "color") {
     const id = menuFor.id;
     if (b.dataset.pick) setColor(id, b.dataset.pick);
+    else if (b.dataset.cover) { closeMenu(); openCoverEditor(id); }
     else if (b.dataset.upload) $("#c-file").click();
     else if (b.dataset.clearimg) { closeMenu(); write(() => Store.remove("images", id)); }
     return;
@@ -852,13 +850,13 @@ menu.addEventListener("click", async (e) => {
   if (b.dataset.ytclear) { setYtOnCopies(a, ""); return; }
   if (b.dataset.copy) {
     const id = await addAlbum({ ...a }, b.dataset.copy);
-    if (id) toast(`Also on ${shelfById(b.dataset.copy).name} now`, { label: "Undo", run: () => write(() => Store.remove("albums", id)) });
+    if (id) toast(`Also in ${shelfById(b.dataset.copy).name} now`, { label: "Undo", run: () => write(() => Store.remove("albums", id)) });
     return;
   }
   if (b.dataset.move) {
     const there = shelfById(b.dataset.move).albums.find((x) => Catalog.albumKey(x.title, x.artist) === Catalog.albumKey(a.title, a.artist));
     if (there) { // already on that shelf: moving just means taking it off this one
-      if (await write(() => Store.remove("albums", a.id))) toast(`It was already on ${shelfById(b.dataset.move).name}, so it's now only there`, { label: "Undo", run: () => restoreAlbum(a) });
+      if (await write(() => Store.remove("albums", a.id))) toast(`It was already in ${shelfById(b.dataset.move).name}, so it's now only there`, { label: "Undo", run: () => restoreAlbum(a) });
       return;
     }
     if (await moveAlbum(a.id, b.dataset.move, 0)) toast(`Moved to ${shelfById(b.dataset.move).name}`, { label: "Undo", run: () => restoreAlbum(a) });
@@ -926,8 +924,8 @@ async function shelfAction(act) {
   const s = shelfById(S.route.id);
   const head = $("#shelf-head");
   if (act === "rename") {
-    head.querySelector(".shelf-title").outerHTML =
-      `<form class="shelf-title" id="rename-form"><input class="rename" id="rename-input" value="${esc(s.name)}" aria-label="Shelf name"></form>`;
+    head.querySelector(".crate-hero .cc-title").outerHTML =
+      `<form class="cc-title" id="rename-form" style="${fontStyle(s)}"><input class="rename" id="rename-input" value="${esc(s.name)}" aria-label="Crate name"></form>`;
     const input = $("#rename-input");
     input.focus(); input.select();
     let done = false;
@@ -945,7 +943,7 @@ async function shelfAction(act) {
     head.querySelector(".note")?.remove();
     head.insertAdjacentHTML("beforeend", `
       <form id="note-form" style="flex:1 1 100%;display:flex;flex-direction:column;gap:8px">
-        <textarea class="note-edit" id="note-input" rows="2" placeholder="What this shelf is about: the years, the car, the friends…">${esc(s.note)}</textarea>
+        <textarea class="note-edit" id="note-input" rows="2" placeholder="What this crate is about: the years, the car, the friends…">${esc(s.note)}</textarea>
         <div><button class="btn primary">Save note</button></div>
       </form>`);
     $("#note-input").focus();
@@ -956,6 +954,8 @@ async function shelfAction(act) {
       await write(() => Store.update("shelves", s.id, { note }));
       render();
     };
+  } else if (act === "cover") {
+    openCoverEditor(s.id);
   } else if (act === "list") {
     if (!S.list || S.list.shelfId !== s.id) S.list = { shelfId: s.id, report: "", busy: false };
     render();
@@ -975,7 +975,7 @@ async function shelfAction(act) {
       if (await write(() => Store.remove("shelves", s.id))) { write(() => Store.remove("images", s.id)); location.hash = "home"; }
     } else {
       btn.dataset.armed = "1"; btn.textContent = "Click again to delete";
-      setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = "Delete shelf"; } }, 4000);
+      setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = "Delete crate"; } }, 4000);
     }
   }
 }
@@ -1048,7 +1048,7 @@ function newCard(a, target, note) {
     <div class="reason" title="${esc(note)}">${esc(note)}</div>
     ${owned ? `<div class="meta on-shelf"><i class="dot" style="background:${esc(owned.shelf.color)}"></i>On ${esc(owned.shelf.name)}</div>` : `
     <div class="add-row">
-      <select aria-label="Shelf to add ${esc(a.title)} to">${shelfOptions(target)}</select>
+      <select aria-label="Crate to add ${esc(a.title)} to">${shelfOptions(target)}</select>
       <button class="btn primary" data-add="${keyOf(a)}">Add</button>
     </div>`}
   </div>`;
@@ -1059,7 +1059,7 @@ function renderNew() {
     <h1 class="page-title">New releases</h1>
     <p class="note" style="margin-bottom:8px">Albums and EPs from the last 12 months, newest first.</p>
     <section class="new-sec">
-      <h2 class="section-label">From artists on your shelves</h2>
+      <h2 class="section-label">From artists in your crates</h2>
       <div class="grid" id="new-mine">${skeletons(6)}</div>
     </section>
     <section class="new-sec" id="new-old-sec" hidden>
@@ -1213,7 +1213,7 @@ function renderChores() {
   const when = c?.updatedAt ? ago(c.updatedAt).toLowerCase() : "";
   view.innerHTML = `
     <h1 class="page-title">Sorting chores</h1>
-    <p class="note">Albums you've listened to a lot (3+ hours on Spotify) or liked songs from on YouTube Music, that aren't on a shelf yet. Most-listened first.</p>
+    <p class="note">Albums you've listened to a lot (3+ hours on Spotify) or liked songs from on YouTube Music, that aren't in a crate yet. Most-listened first.</p>
     <div class="chores-bar">
       ${Store.canSync() && S.user
         ? `<button class="btn primary" id="chores-refresh" ${CHORES.busy ? "disabled" : ""}>${c ? "Check YouTube Music again" : "Connect YouTube Music"}</button>`
@@ -1222,7 +1222,7 @@ function renderChores() {
       ${c ? `<label class="meta"><input type="checkbox" id="chores-singles" ${CHORES.singles ? "checked" : ""}> Include albums with one liked song</label>` : ""}
     </div>
     ${!c && !HIST.summary ? `<div class="empty" style="margin-top:20px">Connect YouTube Music, or bring in your Spotify history on the Listening history page, to see the albums you've been living with. Crate only reads your likes; it can't change anything in your account.</div>`
-      : !items.length ? `<div class="empty" style="margin-top:20px">All caught up. Every album you've liked songs from is on a shelf${all.length ? ", apart from ones with a single liked song" : ""}.</div>`
+      : !items.length ? `<div class="empty" style="margin-top:20px">All caught up. Every album you've liked songs from is in a crate${all.length ? ", apart from ones with a single liked song" : ""}.</div>`
       : `<div class="inbox-list">${items.slice(0, CHORES.shown).map((i) => `
         <div class="inbox-row" data-k="${esc(i.k)}">
           <a class="ib-cover" href="${esc(Catalog.ytSearchUrl(i))}" target="_blank" rel="noopener" title="Open in YouTube Music">
@@ -1233,8 +1233,8 @@ function renderChores() {
             <div class="meta">${esc(choreWhy(i))}</div>
           </div>
           <div class="ib-actions">
-            <select aria-label="Shelf for ${esc(i.title)}"><option value="">Pick a shelf…</option>${shelfOptions(guessShelfFor(i))}</select>
-            <button class="btn primary" data-chore="add">Shelve</button>
+            <select aria-label="Crate for ${esc(i.title)}"><option value="">Pick a crate…</option>${shelfOptions(guessShelfFor(i))}</select>
+            <button class="btn primary" data-chore="add">Add to crate</button>
             <button class="btn" data-chore="skip">Skip</button>
           </div>
         </div>`).join("")}</div>
@@ -1272,14 +1272,14 @@ view.addEventListener("click", async (e) => {
   if (!item) return;
   if (b.dataset.chore === "add") {
     const shelfId = row.querySelector("select").value;
-    if (!shelfId) { toast("Pick a shelf first."); row.querySelector("select").focus(); return; }
+    if (!shelfId) { toast("Pick a crate first."); row.querySelector("select").focus(); return; }
     b.disabled = true; b.textContent = "…";
     // Reuse the match the cover lookup already made; otherwise look it up now.
     coverJob++;
     const found = CHORES.found.get(k) || await Catalog.find(item.artist, item.title).catch(() => null);
     const id = await addAlbum(found ? { ...found } : { title: item.title, artist: item.artist }, shelfId);
     if (id) { row.remove(); addedToast(found?.title || item.title, shelfId, id); }
-    else { b.disabled = false; b.textContent = "Shelve"; }
+    else { b.disabled = false; b.textContent = "Add to crate"; }
   } else if (b.dataset.chore === "skip") {
     row.remove();
     const skipped = [...new Set([...(c.skipped || []), k])];
@@ -1484,7 +1484,7 @@ rail.addEventListener("drop", async (e) => {
   const a = allAlbums().find((x) => x.id === id);
   if (a && shelfById(to).albums.some((x) => Catalog.albumKey(x.title, x.artist) === Catalog.albumKey(a.title, a.artist))) {
     // Already on that shelf: dropping it there just takes it off this one.
-    if (await write(() => Store.remove("albums", id))) toast(`It was already on ${shelfById(to).name}, so it's now only there`, { label: "Undo", run: () => restoreAlbum(a) });
+    if (await write(() => Store.remove("albums", id))) toast(`It was already in ${shelfById(to).name}, so it's now only there`, { label: "Undo", run: () => restoreAlbum(a) });
     return;
   }
   if (await moveAlbum(id, to, 0)) toast(`Moved to ${shelfById(to).name}`);

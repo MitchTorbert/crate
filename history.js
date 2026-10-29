@@ -234,10 +234,10 @@ function histBrowse(h) {
       ${yearsList.map((yr) => `<button class="chip ${y === yr ? "on" : ""}" data-hyear="${yr}">${yr} <span>${hours(h.years[yr])}h</span></button>`).join("")}
     </div>
     ${y ? `<div class="hist-make">
-        <button class="btn primary" id="hist-make" ${canMake && !HIST.making ? "" : "disabled"}>${HIST.making ? "Making the shelf…" : `Make a shelf from ${y}`}</button>
-        <span class="meta" id="hist-make-status">Takes your 12 most-played albums from ${y} that aren't on a shelf yet. Rename it to the period of your life it was.</span>
+        <button class="btn primary" id="hist-make" ${canMake && !HIST.making ? "" : "disabled"}>${HIST.making ? "Making the crate…" : `Make a crate from ${y}`}</button>
+        <span class="meta" id="hist-make-status">Takes your 12 most-played albums from ${y} that aren't in a crate yet. Rename it to the period of your life it was.</span>
       </div>` : ""}
-    <label class="meta vault-check"><input type="checkbox" id="hist-hide-sorted" ${vaultPref("historyHideSorted", true) ? "checked" : ""}> Hide albums already on a shelf (${sorted})</label>
+    <label class="meta vault-check"><input type="checkbox" id="hist-hide-sorted" ${vaultPref("historyHideSorted", true) ? "checked" : ""}> Hide albums already in a crate (${sorted})</label>
     ${worship ? `<p class="meta" style="text-transform:none;letter-spacing:0;margin:0 0 10px">${HIST.showWorship ? `Showing ${worship} worship albums.` : `${worship} worship albums hidden.`}
       <button class="link" id="hist-worship">${HIST.showWorship ? "Hide them" : "Show them"}</button></p>` : ""}
     <div class="hist-list">
@@ -253,7 +253,7 @@ function histBrowse(h) {
             <div class="meta">${hours(a.min)} hours${y ? ` in ${y}` : ""} · ${a.plays.toLocaleString()} plays all time · ${monthYear(a.first)}–${monthYear(a.last)}</div>
           </div>
           <div class="ib-actions">${have ? `<span class="meta"><i class="dot" style="background:${esc(have.shelf.color)}"></i>${esc(have.shelf.name)}</span>`
-            : `<select aria-label="Shelf for ${esc(a.title)}"><option value="">Add to…</option>${shelfOptions("")}</select>`}</div>
+            : `<select aria-label="Crate for ${esc(a.title)}"><option value="">Add to…</option>${shelfOptions("")}</select>`}</div>
         </div>`;
       }).join("")}
     </div>
@@ -302,7 +302,7 @@ async function makeYearShelf() {
   HIST.making = true;
   histCoverJob++;
   const btn = document.getElementById("hist-make");
-  if (btn) { btn.disabled = true; btn.textContent = "Making the shelf…"; }
+  if (btn) { btn.disabled = true; btn.textContent = "Making the crate…"; }
   const id = newId("s");
   const order = Math.max(0, ...S.lib.shelves.map((s) => s.order ?? 0)) + 1;
   const used = new Set(S.lib.shelves.map((s) => s.color));
@@ -325,7 +325,7 @@ async function makeYearShelf() {
     }))) added++;
   }
   HIST.making = false;
-  toast(`Made a “${y}” shelf with ${added} albums. Rename it from its page.`);
+  toast(`Made a “${y}” crate with ${added} albums. Rename it from its page.`);
   location.hash = `shelf-${id}`;
 }
 

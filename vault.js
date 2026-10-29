@@ -473,7 +473,7 @@ function vaultBrowse(d) {
           .map(([v, l]) => `<option value="${v}" ${VAULT.sort === v ? "selected" : ""}>${l}</option>`).join("")}
       </select>
     </div>
-    <label class="meta vault-check"><input type="checkbox" id="vault-hide-sorted" ${hideSorted ? "checked" : ""}> Hide albums already on a shelf (${counts.sorted})</label>
+    <label class="meta vault-check"><input type="checkbox" id="vault-hide-sorted" ${hideSorted ? "checked" : ""}> Hide albums already in a crate (${counts.sorted})</label>
     ${counts.mixes ? `<p class="meta" style="text-transform:none;letter-spacing:0;margin:0 0 6px">${counts.mixes} album ${counts.mixes === 1 ? "entry" : "entries"} from hidden playlists left out.</p>` : ""}
     ${worship ? `<p class="meta" style="text-transform:none;letter-spacing:0;margin:0 0 10px">${VAULT.showWorship ? `Showing ${worship} worship albums.` : `${worship} worship albums hidden.`}
       <button class="link" id="vault-worship">${VAULT.showWorship ? "Hide them" : "Show them"}</button></p>` : ""}
@@ -491,7 +491,7 @@ function vaultBrowse(d) {
           <span class="num">${a.songs}</span><span class="num">${a.plays.toLocaleString()}</span>
           <span class="num">${shortDate(a.added)}</span><span class="stars">${stars(a.stars)}</span>
           <span class="vact">${have ? `<span class="meta"><i class="dot" style="background:${esc(have.shelf.color)}"></i>${esc(have.shelf.name)}</span>`
-            : `<select aria-label="Shelf for ${esc(a.title)}"><option value="">Add to…</option>${shelfOptions("")}</select>`}</span>
+            : `<select aria-label="Crate for ${esc(a.title)}"><option value="">Add to…</option>${shelfOptions("")}</select>`}</span>
         </div>`;
       }).join("")}
     </div>
