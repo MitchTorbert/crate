@@ -280,7 +280,7 @@ const Catalog = (() => {
     return best && best[0] >= 0.85 ? { id: best[1].id, name: best[1].name } : null;
   }
 
-  async function suggest(shelfAlbums, { n = 8, seed = "0", owned = () => false, libraryArtists = new Set(), favorites = new Map() } = {}) {
+  async function suggest(shelfAlbums, { n = 8, seed = "0", owned = () => false, libraryArtists = new Set(), favorites = new Map(), favoriteLabel = new Map() } = {}) {
     const r = rng(seed);
     const artists = new Map();
     for (const a of shelfAlbums) if (a.artistId) artists.set(a.artistId, a.artist);
@@ -310,7 +310,7 @@ const Catalog = (() => {
       const albums = (await artistAlbums(x.id)).filter((a) => !owned(a)).sort((a, b) => b.fans - a.fans);
       const plays = favorites.get(norm(x.name));
       const pool = albums.filter((a) => !isWorship(a));
-      if (pool.length) similar.push({ ...pool[Math.floor(r() * Math.min(2, pool.length))], reason: plays ? `${plays} plays in your iTunes` : `If you like ${name}` });
+      if (pool.length) similar.push({ ...pool[Math.floor(r() * Math.min(2, pool.length))], reason: plays ? favoriteLabel.get(norm(x.name)) || `If you like ${name}` : `If you like ${name}` });
     }
     const d = shuffle(deep, r);
     const nDeep = Math.min(d.length, Math.max(2, Math.floor(n / 3)));

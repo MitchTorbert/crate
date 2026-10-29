@@ -157,7 +157,7 @@ function parseTyped(text) {
 
 // ------------------------------------------------------------------ staying up to date
 
-const FILES = ["./", "index.html", "style.css", "app.js", "catalog.js", "store.js", "vault.js", "config.js", "manifest.webmanifest", "version.json"];
+const FILES = ["./", "index.html", "style.css", "app.js", "catalog.js", "store.js", "vault.js", "history.js", "config.js", "manifest.webmanifest", "version.json"];
 
 /** Re-download every file past the browser's cache, then reload. */
 async function hardRefresh() {
@@ -317,9 +317,9 @@ function oldLibrary() {
   return oldLoad;
 }
 
-/** Old-library albums that fit a shelf: same artists or bands related to them, most-played first. */
+/** Albums you've listened to a lot (old iTunes, Spotify) that fit a shelf: same artists or related bands, most-listened first. */
 async function oldPicksFor(shelf, count, seed) {
-  const old = await oldLibrary();
+  const old = await tasteData();
   if (!old || !count) return [];
   const mine = new Set(shelf.albums.map((x) => norm(x.artist)));
   const near = await Catalog.relatedNames(shelf.albums).catch(() => new Set());
@@ -327,14 +327,14 @@ async function oldPicksFor(shelf, count, seed) {
   const dismissedOld = new Set(S.raw?.meta?.dismissed?.old || []);
   const fits = old.albums
     .filter((x) => (mine.has(norm(x.artist)) || near.has(norm(x.artist))) && !owned(x) && !dismissedOld.has(x.k))
-    .sort((x, y) => y.plays - x.plays);
+    .sort((x, y) => y.score - x.score);
   // Mostly the top of the list, with Shuffle bringing in others from near the top.
-  const pool = Catalog.shuffle(fits.slice(0, count * 3), Catalog.rng(seed)).slice(0, count).sort((x, y) => y.plays - x.plays);
+  const pool = Catalog.shuffle(fits.slice(0, count * 3), Catalog.rng(seed)).slice(0, count).sort((x, y) => y.score - x.score);
   const out = [];
   for (const x of pool) {
     const hit = await Catalog.find(x.artist, x.title).catch(() => null);
-    const base = hit || { deezerId: null, title: x.title, artist: x.artist, year: x.year, cover: "" };
-    out.push({ ...base, itunesId: hit ? base.itunesId : x.k, oldKey: x.k, reason: `${x.plays.toLocaleString()} plays in your iTunes` });
+    const base = hit || { deezerId: null, title: x.title, artist: x.artist, year: null, cover: "" };
+    out.push({ ...base, itunesId: hit ? base.itunesId : x.k, oldKey: x.k, reason: x.label });
   }
   return out;
 }
@@ -372,10 +372,10 @@ async function fillSuggestions() {
         const owned = ownedCheck();
         const libArtists = new Set(allAlbums().map((a) => a.artistId).filter(Boolean));
         const seed = `${shelf.id}-${S.seeds[shelf.id] || 0}`;
-        const old = await oldLibrary();
-        const nOld = old ? Math.ceil(n / 3) : 0;
+        const taste = await tasteData();
+        const nOld = taste ? Math.ceil(n / 3) : 0;
         const [fresh, mine] = await Promise.all([
-          Catalog.suggest(shelf.albums, { n, seed, owned, libraryArtists: libArtists, favorites: old?.artistPlays }),
+          Catalog.suggest(shelf.albums, { n, seed, owned, libraryArtists: libArtists, favorites: taste?.artistScore, favoriteLabel: taste?.artistLabel }),
           oldPicksFor(shelf, nOld, seed),
         ]);
         // Every third card is from the old library, starting with the first.
@@ -659,6 +659,7 @@ function route() {
   else if (h === "links") S.route = { name: "links" };
   else if (h === "chores") S.route = { name: "chores" };
   else if (h === "vault") S.route = { name: "vault" };
+  else if (h === "history") S.route = { name: "history" };
   else if (h.startsWith("ytlinks=")) { receiveYtLinks(h.slice(8)); return; }
   else if (h === "search" && S.query) S.route = { name: "search" };
   else S.route = { name: "home" };
@@ -676,6 +677,7 @@ function render() {
   else if (r.name === "links") renderLinks();
   else if (r.name === "chores") renderChores();
   else if (r.name === "vault") renderVault();
+  else if (r.name === "history") renderHistory();
   else if (r.name === "search") renderSearch();
   else renderHome();
   markActive();
@@ -1024,7 +1026,7 @@ function renderNew() {
       <div class="grid" id="new-mine">${skeletons(6)}</div>
     </section>
     <section class="new-sec" id="new-old-sec" hidden>
-      <h2 class="section-label">From artists you played most on iTunes</h2>
+      <h2 class="section-label">From artists you've played most</h2>
       <div class="grid" id="new-old">${skeletons(6)}</div>
     </section>
     <section class="new-sec">
@@ -1045,20 +1047,20 @@ async function loadNew() {
     const mine = await Catalog.newFrom(artists, since);
     fill("#new-mine", mine.map((a) => newCard(a, shelfOf.get(a.artistId), `Released ${monthDay(a.released)}`)).join(""),
       "None of your artists have released anything in the last 12 months.");
-    const old = await oldLibrary();
-    if (old) {
+    const taste = await tasteData();
+    if (taste) {
       $("#new-old-sec") && ($("#new-old-sec").hidden = false);
       const shelfNames = new Set([...artists.values()].map(norm));
-      const top = [...old.artistPlays].filter(([n]) => !shelfNames.has(n)).sort((x, y) => y[1] - x[1]).slice(0, 30);
-      const names = new Map(old.albums.map((x) => [norm(x.artist), x.artist]));
-      const ids = new Map(), playsOf = new Map();
-      for (const [n, plays] of top) {
-        const hit = await Catalog.findArtist(names.get(n)).catch(() => null);
-        if (hit && !artists.has(hit.id)) { ids.set(hit.id, hit.name); playsOf.set(hit.id, plays); }
+      const top = [...taste.artistScore].filter(([n]) => !shelfNames.has(n) && !Catalog.isWorship({ artist: taste.names.get(n) || n }))
+        .sort((x, y) => y[1] - x[1]).slice(0, 30);
+      const ids = new Map(), labelOf = new Map();
+      for (const [n] of top) {
+        const hit = await Catalog.findArtist(taste.names.get(n) || n).catch(() => null);
+        if (hit && !artists.has(hit.id)) { ids.set(hit.id, hit.name); labelOf.set(hit.id, taste.artistLabel.get(n)); }
       }
       const fromOld = await Catalog.newFrom(ids, since);
-      fill("#new-old", fromOld.map((a) => newCard(a, "", `Released ${monthDay(a.released)} · ${playsOf.get(a.artistId)?.toLocaleString()} old plays`)).join(""),
-        "Nothing new from the artists you played most.");
+      fill("#new-old", fromOld.map((a) => newCard(a, "", `Released ${monthDay(a.released)} · ${labelOf.get(a.artistId) || ""}`)).join(""),
+        "Nothing new from the artists you've played most.");
     }
     const near = (await Catalog.newNearby(artists, since)).slice(0, 24);
     fill("#new-near", near.map((a) => newCard(a, byName.get(a.because[0]),
@@ -1111,12 +1113,32 @@ async function fetchYouTubeLikes(token) {
   return { albums: [...albums.values()], liked: rank };
 }
 
+const SPOTIFY_CHORE_MIN = 180; // three hours of listening
+
+/** YouTube Music likes and Spotify albums with 3+ hours, merged, minus anything shelved or skipped. */
 function choreItems() {
-  const c = S.raw?.meta?.chores;
-  if (!c?.items) return [];
+  const c = S.raw?.meta?.chores || {};
   const skipped = new Set(c.skipped || []);
   const owned = new Set(allAlbums().map((a) => norm(a.title) + "|" + norm(a.artist)));
-  return c.items.filter((i) => !skipped.has(i.k) && !owned.has(i.k) && !Catalog.isWorship(i));
+  const byKey = new Map();
+  for (const i of c.items || []) byKey.set(i.k, { ...i, likes: i.count });
+  for (const a of HIST.summary?.albums || []) {
+    if (a.min < SPOTIFY_CHORE_MIN) continue;
+    const e = byKey.get(a.k) || { k: a.k, title: a.title, artist: a.artist, songs: [], likes: 0 };
+    byKey.set(a.k, { ...e, min: a.min, plays: a.plays });
+  }
+  // Rank by listening: an hour on Spotify counts about the same as one liked song.
+  const score = (i) => (i.min || 0) / 60 + (i.likes || 0);
+  return [...byKey.values()].map((i) => ({ ...i, count: Math.max(i.likes || 0, i.min ? 2 : 0) }))
+    .filter((i) => !skipped.has(i.k) && !owned.has(i.k) && !Catalog.isWorship(i))
+    .sort((x, y) => score(y) - score(x));
+}
+
+function choreWhy(i) {
+  const parts = [];
+  if (i.min) parts.push(`${hours(i.min)} hours on Spotify`);
+  if (i.likes) parts.push(`${i.likes} liked ${i.likes === 1 ? "song" : "songs"}${i.songs?.length ? ` (${i.songs.join(", ")}${i.likes > i.songs.length ? "…" : ""})` : ""}`);
+  return parts.join(" · ");
 }
 
 async function refreshChores() {
@@ -1146,13 +1168,14 @@ function guessShelfFor(i) {
 }
 
 function renderChores() {
+  if (!HIST.summary && !HIST.checkedChores) { HIST.checkedChores = true; spotifyHistory().then((h) => h && S.route.name === "chores" && render()); }
   const c = S.raw?.meta?.chores;
   const all = choreItems();
   const items = all.filter((i) => CHORES.singles || i.count > 1);
   const when = c?.updatedAt ? ago(c.updatedAt).toLowerCase() : "";
   view.innerHTML = `
     <h1 class="page-title">Sorting chores</h1>
-    <p class="note">Albums you've liked songs from on YouTube Music that aren't on a shelf yet, most-liked first.</p>
+    <p class="note">Albums you've listened to a lot (3+ hours on Spotify) or liked songs from on YouTube Music, that aren't on a shelf yet. Most-listened first.</p>
     <div class="chores-bar">
       ${Store.canSync() && S.user
         ? `<button class="btn primary" id="chores-refresh" ${CHORES.busy ? "disabled" : ""}>${c ? "Check YouTube Music again" : "Connect YouTube Music"}</button>`
@@ -1160,7 +1183,7 @@ function renderChores() {
       <span class="meta" id="chores-status">${esc(CHORES.busy || (c ? `Checked ${when} · ${c.liked} liked songs` : ""))}</span>
       ${c ? `<label class="meta"><input type="checkbox" id="chores-singles" ${CHORES.singles ? "checked" : ""}> Include albums with one liked song</label>` : ""}
     </div>
-    ${!c ? `<div class="empty" style="margin-top:20px">Connect YouTube Music to see which albums you've been liking. Crate only reads your likes; it can't change anything in your account.</div>`
+    ${!c && !HIST.summary ? `<div class="empty" style="margin-top:20px">Connect YouTube Music, or bring in your Spotify history on the Listening history page, to see the albums you've been living with. Crate only reads your likes; it can't change anything in your account.</div>`
       : !items.length ? `<div class="empty" style="margin-top:20px">All caught up. Every album you've liked songs from is on a shelf${all.length ? ", apart from ones with a single liked song" : ""}.</div>`
       : `<div class="inbox-list">${items.slice(0, CHORES.shown).map((i) => `
         <div class="inbox-row" data-k="${esc(i.k)}">
@@ -1169,7 +1192,7 @@ function renderChores() {
           </a>
           <div style="min-width:0">
             <div class="t">${esc(i.title)}</div><div class="s">${esc(i.artist)}</div>
-            <div class="meta">${i.count} liked ${i.count === 1 ? "song" : "songs"} · ${esc(i.songs.join(", "))}${i.count > i.songs.length ? "…" : ""}</div>
+            <div class="meta">${esc(choreWhy(i))}</div>
           </div>
           <div class="ib-actions">
             <select aria-label="Shelf for ${esc(i.title)}"><option value="">Pick a shelf…</option>${shelfOptions(guessShelfFor(i))}</select>
@@ -1206,8 +1229,8 @@ view.addEventListener("click", async (e) => {
   if (b.dataset.chore === "more") { CHORES.shown += 40; render(); return; }
   const row = b.closest(".inbox-row");
   const k = row.dataset.k;
-  const c = S.raw.meta.chores;
-  const item = c.items.find((x) => x.k === k);
+  const c = S.raw?.meta?.chores || {};
+  const item = choreItems().find((x) => x.k === k);
   if (!item) return;
   if (b.dataset.chore === "add") {
     const shelfId = row.querySelector("select").value;
@@ -1222,8 +1245,8 @@ view.addEventListener("click", async (e) => {
   } else if (b.dataset.chore === "skip") {
     row.remove();
     const skipped = [...new Set([...(c.skipped || []), k])];
-    await write(() => Store.update("meta", "chores", { skipped }));
-    toast(`Skipped ${item.title}`, { label: "Undo", run: () => write(() => Store.update("meta", "chores", { skipped: skipped.filter((x) => x !== k) })) });
+    await write(() => Store.set("meta", "chores", { ...c, skipped }));
+    toast(`Skipped ${item.title}`, { label: "Undo", run: () => write(() => Store.set("meta", "chores", { ...(S.raw?.meta?.chores || {}), skipped: skipped.filter((x) => x !== k) })) });
   }
 });
 

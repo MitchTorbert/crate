@@ -168,6 +168,13 @@ const Store = (() => {
       for (const d of old.docs) if (!keep.has(d.id)) await d.ref.delete();
     },
 
+    /** One document from an archive collection, or null. */
+    async getVaultDoc(collection, id, { fromServer = false } = {}) {
+      if (mode !== "cloud") return null;
+      const snap = await userCol(collection).doc(id).get(fromServer ? { source: "server" } : undefined);
+      return snap.exists ? snap.data() : null;
+    },
+
     /** Reads the archive back from the server (not this device's cache). */
     async loadVault({ fromServer = false, collection = "vault" } = {}) {
       if (mode !== "cloud") return null;
