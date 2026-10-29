@@ -412,3 +412,6 @@ textarea.note-edit { width: 100%; max-width: 60ch; background: var(--raise); col
 .vault-check { display: flex; gap: 6px; align-items: center; text-transform: none; letter-spacing: 0; margin: 0 0 8px; cursor: pointer; }
 .pl-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 4px; }
 .pl-actions .meta { text-transform: none; letter-spacing: 0; }
+.rank { font: 12px var(--mono); color: var(--muted); margin-right: 8px; font-variant-numeric: tabular-nums; }
+.album-sub .also { display: inline-flex; gap: 2px; align-items: center; flex: none; }
+.album-sub .also .dot { width: 7px; height: 7px; margin: 0; }

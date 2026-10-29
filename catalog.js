@@ -234,6 +234,20 @@ const Catalog = (() => {
   }
 
   /** Deeper cuts from the shelf's artists plus well-known albums by related bands. */
+  // ---------------------------------------------------------------- one album, many editions
+
+  const EDITION = "deluxe|remaster(ed)?|expanded|special|anniversary|bonus|explicit|clean|reissue|edition|version|collector'?s|super|platinum|complete|legacy|tour";
+  /** "Take Care - Deluxe" and "Take Care (Remastered 2011)" are both "Take Care". */
+  function baseTitle(t) {
+    let s = String(t || "");
+    for (let i = 0; i < 3; i++) {
+      s = s.replace(new RegExp(`\\s*[\\(\\[][^)\\]]*\\b(${EDITION})\\b[^)\\]]*[\\)\\]]\\s*$`, "i"), "")
+           .replace(new RegExp(`\\s+[-–—:]\\s+[^-–—:]*\\b(${EDITION})\\b[^-–—:]*$`, "i"), "");
+    }
+    return s.trim() || String(t || "");
+  }
+  const albumKey = (title, artist) => norm(baseTitle(title)) + "|" + norm(artist);
+
   // ---------------------------------------------------------------- worship filter
   // Deliberately narrow: explicit worship/praise acts and titles, not "Christian" in general,
   // so bands from that scene (Underoath, mewithoutYou, P.O.D., Switchfoot...) stay in.
@@ -377,5 +391,5 @@ const Catalog = (() => {
     return "";
   }
 
-  return { search, find, toDeezer, sim, detail, newFrom, newNearby, isWorship, relatedNames, findArtist, artistAlbums, related, suggest, norm, ytSearchUrl, resolveYouTube, rng, shuffle };
+  return { search, find, toDeezer, sim, detail, newFrom, newNearby, isWorship, relatedNames, findArtist, baseTitle, albumKey, artistAlbums, related, suggest, norm, ytSearchUrl, resolveYouTube, rng, shuffle };
 })();

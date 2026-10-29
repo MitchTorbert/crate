@@ -79,7 +79,7 @@ function summarize({ tracks, plays }) {
     ar.min += min;
     artists.set(norm(artist), ar);
     if (!album) continue;
-    const k = norm(album) + "|" + norm(artist);
+    const k = Catalog.albumKey(album, artist);
     const a = albums.get(k) || { title: album, artist, min: 0, plays: 0, first: t, last: t, years: {} };
     a.min += min;
     if (secs >= 30) a.plays++; // Spotify counts a stream after 30 seconds
@@ -102,8 +102,16 @@ function summarize({ tracks, plays }) {
 
 function unpackSummary(doc) {
   if (!doc?.albums) return null;
-  const albums = JSON.parse(doc.albums).map(([title, artist, min, plays, first, last, years]) =>
-    ({ k: norm(title) + "|" + norm(artist), title, artist, min, plays, first, last, years }));
+  // Editions of one album ("Take Care", "Take Care - Deluxe") are merged into one entry.
+  const merged = new Map();
+  for (const [title, artist, min, plays, first, last, years] of JSON.parse(doc.albums)) {
+    const k = Catalog.albumKey(title, artist);
+    const a = merged.get(k);
+    if (!a) { merged.set(k, { k, title: Catalog.baseTitle(title), artist, min, plays, first, last, years: { ...years }, editions: 1 }); continue; }
+    a.min += min; a.plays += plays; a.first = Math.min(a.first, first); a.last = Math.max(a.last, last); a.editions++;
+    for (const [y, m] of Object.entries(years)) a.years[y] = (a.years[y] || 0) + m;
+  }
+  const albums = [...merged.values()].sort((x, y) => y.min - x.min);
   const artists = new Map(JSON.parse(doc.artists).map(([name, min]) => [norm(name), { name, min }]));
   return { albums, artists, years: doc.years, totals: doc.totals, importedAt: doc.importedAt };
 }
@@ -201,18 +209,20 @@ function histImport() {
 }
 
 function histAlbums(h) {
-  const owned = new Map(allAlbums().map((x) => [norm(x.title) + "|" + norm(x.artist), x]));
+  const owned = new Map(allAlbums().map((x) => [Catalog.albumKey(x.title, x.artist), x]));
   const y = HIST.year;
   let list = h.albums.map((a) => ({ ...a, min: y ? a.years[y] || 0 : a.min })).filter((a) => a.min > 0);
+  const sorted = list.filter((a) => owned.has(a.k)).length;
+  if (vaultPref("historyHideSorted", true)) list = list.filter((a) => !owned.has(a.k));
   const worship = list.filter((a) => Catalog.isWorship(a)).length;
   if (!HIST.showWorship) list = list.filter((a) => !Catalog.isWorship(a));
   list.sort((a, b) => b.min - a.min);
-  return { list, owned, worship };
+  return { list, owned, worship, sorted };
 }
 
 function histBrowse(h) {
   const t = h.totals;
-  const { list, owned, worship } = histAlbums(h);
+  const { list, owned, worship, sorted } = histAlbums(h);
   const yearsList = Object.keys(h.years).sort();
   const y = HIST.year;
   const canMake = y && list.some((a) => !owned.has(a.k));
@@ -227,6 +237,7 @@ function histBrowse(h) {
         <button class="btn primary" id="hist-make" ${canMake && !HIST.making ? "" : "disabled"}>${HIST.making ? "Making the shelf…" : `Make a shelf from ${y}`}</button>
         <span class="meta" id="hist-make-status">Takes your 12 most-played albums from ${y} that aren't on a shelf yet. Rename it to the period of your life it was.</span>
       </div>` : ""}
+    <label class="meta vault-check"><input type="checkbox" id="hist-hide-sorted" ${vaultPref("historyHideSorted", true) ? "checked" : ""}> Hide albums already on a shelf (${sorted})</label>
     ${worship ? `<p class="meta" style="text-transform:none;letter-spacing:0;margin:0 0 10px">${HIST.showWorship ? `Showing ${worship} worship albums.` : `${worship} worship albums hidden.`}
       <button class="link" id="hist-worship">${HIST.showWorship ? "Hide them" : "Show them"}</button></p>` : ""}
     <div class="hist-list">
@@ -238,7 +249,7 @@ function histBrowse(h) {
             ${HIST.covers.get(a.k) ? `<img src="${esc(HIST.covers.get(a.k))}" alt="">` : `<span class="mini burned"><span class="disc"></span></span>`}
           </a>
           <div style="min-width:0">
-            <div class="t"><span class="rank">${n + 1}</span>${esc(a.title)}</div><div class="s">${esc(a.artist)}</div>
+            <div class="t"><span class="rank">${n + 1}</span>${esc(a.title)}${a.editions > 1 ? ` <span class="meta" title="Plays from ${a.editions} editions are combined">${a.editions} editions</span>` : ""}</div><div class="s">${esc(a.artist)}</div>
             <div class="meta">${hours(a.min)} hours${y ? ` in ${y}` : ""} · ${a.plays.toLocaleString()} plays all time · ${monthYear(a.first)}–${monthYear(a.last)}</div>
           </div>
           <div class="ib-actions">${have ? `<span class="meta"><i class="dot" style="background:${esc(have.shelf.color)}"></i>${esc(have.shelf.name)}</span>`
@@ -257,6 +268,8 @@ function wireHistory() {
   document.getElementById("hist-more")?.addEventListener("click", () => { HIST.shown += 50; render(); });
   document.getElementById("hist-worship")?.addEventListener("click", () => { HIST.showWorship = !HIST.showWorship; render(); });
   document.getElementById("hist-make")?.addEventListener("click", makeYearShelf);
+  const hs = document.getElementById("hist-hide-sorted");
+  if (hs) hs.onchange = () => setVaultPref({ historyHideSorted: hs.checked }).then(render);
   document.getElementById("hist-redo")?.addEventListener("click", () => {
     view.innerHTML = `<h1 class="page-title">Listening history</h1>${histImport()}`;
     wireHistory();

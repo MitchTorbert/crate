@@ -31,6 +31,11 @@ function rebuild() {
   for (const [id, a] of Object.entries(raw.albums)) (byShelf[a.shelfId] ||= []).push({ id, ...a });
   const shelves = Object.entries(raw.shelves).map(([id, s]) => ({ id, ...s }))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  S.copies = new Map(); // album key -> shelf ids it's on, so an album can live on several shelves
+  for (const [id, a] of Object.entries(raw.albums)) {
+    const k = Catalog.albumKey(a.title, a.artist);
+    S.copies.set(k, [...(S.copies.get(k) || []), a.shelfId]);
+  }
   S.lib = {
     shelves: shelves.map((s, i) => ({
       ...s, note: s.note || "", color: s.color || PALETTE[i % PALETTE.length],
@@ -75,11 +80,14 @@ async function addAlbum(a, shelfId) {
     const d = await Catalog.detail(a.deezerId).catch(() => null);
     if (d) a = { ...d, ...Object.fromEntries(Object.entries(a).filter(([, v]) => v)) , year: a.year || d.year, cover: a.cover || d.cover };
   }
-  const dupe = allAlbums().find((x) => (a.deezerId && x.deezerId === a.deezerId) || (norm(x.title) === norm(a.title) && norm(x.artist) === norm(a.artist)));
-  if (dupe) { toast(`${dupe.title} is already on ${dupe.shelf.name}.`); return null; }
+  const same = (x) => (a.deezerId && x.deezerId === a.deezerId) || Catalog.albumKey(x.title, x.artist) === Catalog.albumKey(a.title, a.artist);
+  // An album can sit on several shelves, but only once per shelf.
+  if (s.albums.some(same)) { toast(`${a.title} is already on ${s.name}.`); return null; }
+  const other = allAlbums().find(same); // reuse what another copy already knows (cover, album link)
   const body = {
-    shelfId, pos: posAt(s.albums, 0), title: a.title, artist: a.artist, artistId: a.artistId ?? null,
-    year: a.year ?? null, deezerId: a.deezerId ?? null, cover: a.cover || "", addedAt: now(),
+    shelfId, pos: posAt(s.albums, 0), title: other?.title || a.title, artist: other?.artist || a.artist, artistId: a.artistId ?? other?.artistId ?? null,
+    year: a.year ?? other?.year ?? null, deezerId: a.deezerId ?? other?.deezerId ?? null, cover: a.cover || other?.cover || "", addedAt: now(),
+    ...(other?.ytUrl ? { ytUrl: other.ytUrl } : {}),
   };
   const id = newId("a");
   return (await write(() => Store.set("albums", id, body))) ? id : null;
@@ -108,9 +116,9 @@ const dismissed = () => new Set(S.raw?.meta?.dismissed?.ids || []);
 
 function ownedCheck() {
   const ids = new Set(), keys = new Set();
-  for (const a of allAlbums()) { if (a.deezerId) ids.add(a.deezerId); keys.add(norm(a.title) + "|" + norm(a.artist)); }
+  for (const a of allAlbums()) { if (a.deezerId) ids.add(a.deezerId); keys.add(Catalog.albumKey(a.title, a.artist)); }
   const dis = dismissed();
-  return (p) => ids.has(p.deezerId) || dis.has(p.deezerId) || keys.has(norm(p.title) + "|" + norm(p.artist));
+  return (p) => ids.has(p.deezerId) || dis.has(p.deezerId) || keys.has(Catalog.albumKey(p.title, p.artist));
 }
 
 function span(albums) {
@@ -262,8 +270,15 @@ function albumCard(a, { draggable = false } = {}) {
     </a>
     <button class="more" data-menu="${a.id}" aria-label="Options for ${esc(a.title)}" aria-haspopup="menu" aria-expanded="false">⋯</button>
     <div class="album-title">${esc(a.title)}</div>
-    <div class="album-sub"><span class="artist">${esc(a.artist)}</span><span class="yr">${a.year ?? ""}</span></div>
+    <div class="album-sub"><span class="artist">${esc(a.artist)}</span>${alsoOn(a)}<span class="yr">${a.year ?? ""}</span></div>
   </div>`;
+}
+
+/** Small dots for the other shelves an album is on. */
+function alsoOn(a) {
+  const others = (S.copies?.get(Catalog.albumKey(a.title, a.artist)) || []).filter((id) => id !== a.shelfId).map(shelfById).filter(Boolean);
+  if (!others.length) return "";
+  return `<span class="also" title="Also on ${esc(others.map((s) => s.name).join(", "))}">${others.map((s) => `<i class="dot" style="background:${esc(s.color)}"></i>`).join("")}</span>`;
 }
 
 const shelfOptions = (selected) =>
@@ -708,9 +723,13 @@ function openMenu(btn, albumId) {
   if (!a) return;
   menuFor = { kind: "album", id: albumId };
   btn.setAttribute("aria-expanded", "true");
+  const on = new Set(S.copies.get(Catalog.albumKey(a.title, a.artist)) || []);
+  const elsewhere = S.lib.shelves.filter((s) => !on.has(s.id));
   menu.innerHTML = `
     <div class="label">Move to</div>
-    ${S.lib.shelves.map((s) => `<button data-move="${s.id}" ${s.id === a.shelf.id ? "disabled" : ""}><i class="dot" style="background:${esc(s.color)}"></i>${esc(s.name)}${s.id === a.shelf.id ? " · here" : ""}</button>`).join("")}
+    ${S.lib.shelves.map((s) => `<button data-move="${s.id}" ${s.id === a.shelf.id ? "disabled" : ""}><i class="dot" style="background:${esc(s.color)}"></i>${esc(s.name)}${s.id === a.shelf.id ? " · here" : on.has(s.id) ? " · also here" : ""}</button>`).join("")}
+    ${elsewhere.length ? `<hr><div class="label">Also put on</div>
+    ${elsewhere.map((s) => `<button data-copy="${s.id}"><i class="dot" style="background:${esc(s.color)}"></i>${esc(s.name)}</button>`).join("")}` : ""}
     <hr>
     <div class="label">YouTube Music link</div>
     <div class="menu-note">${a.ytUrl ? "Opens the album page" : "Opens a search for the album"}</div>
@@ -721,7 +740,7 @@ function openMenu(btn, albumId) {
     ${navigator.clipboard?.readText ? `<button data-ytpaste="1">Paste link from clipboard</button>` : ""}
     ${a.ytUrl ? `<button data-ytclear="1">Go back to opening a search</button>` : ""}
     <hr>
-    <button data-remove="1">Remove from library</button>`;
+    <button data-remove="1">${on.size > 1 ? `Remove from ${esc(a.shelf.name)}` : "Remove from library"}</button>`;
   placeMenu(btn, true);
   $("#yt-form").onsubmit = (e) => { e.preventDefault(); saveYtLink(a, $("#yt-input").value); };
 }
@@ -744,7 +763,15 @@ async function saveYtLink(a, text) {
   const url = cleanYtLink(text);
   if (!url) { toast("That isn't an album link. In YouTube Music, open the album, tap Share, then Copy link."); return; }
   closeMenu();
-  if (await write(() => Store.update("albums", a.id, { ytUrl: url }))) toast(`${a.title} now opens its album page`);
+  if (await setYtOnCopies(a, url)) toast(`${a.title} now opens its album page`);
+}
+
+/** Every copy of an album (on any shelf) shares one YouTube Music link. */
+async function setYtOnCopies(a, url) {
+  const k = Catalog.albumKey(a.title, a.artist);
+  let ok = true;
+  for (const x of allAlbums()) if (x.id === a.id || Catalog.albumKey(x.title, x.artist) === k) ok = (await write(() => Store.update("albums", x.id, { ytUrl: url }))) && ok;
+  return ok;
 }
 
 function openColorMenu(btn, shelfId) {
@@ -822,8 +849,18 @@ menu.addEventListener("click", async (e) => {
   }
   closeMenu();
   if (!a) return;
-  if (b.dataset.ytclear) { write(() => Store.update("albums", a.id, { ytUrl: "" })); return; }
+  if (b.dataset.ytclear) { setYtOnCopies(a, ""); return; }
+  if (b.dataset.copy) {
+    const id = await addAlbum({ ...a }, b.dataset.copy);
+    if (id) toast(`Also on ${shelfById(b.dataset.copy).name} now`, { label: "Undo", run: () => write(() => Store.remove("albums", id)) });
+    return;
+  }
   if (b.dataset.move) {
+    const there = shelfById(b.dataset.move).albums.find((x) => Catalog.albumKey(x.title, x.artist) === Catalog.albumKey(a.title, a.artist));
+    if (there) { // already on that shelf: moving just means taking it off this one
+      if (await write(() => Store.remove("albums", a.id))) toast(`It was already on ${shelfById(b.dataset.move).name}, so it's now only there`, { label: "Undo", run: () => restoreAlbum(a) });
+      return;
+    }
     if (await moveAlbum(a.id, b.dataset.move, 0)) toast(`Moved to ${shelfById(b.dataset.move).name}`, { label: "Undo", run: () => restoreAlbum(a) });
   } else if (b.dataset.remove) {
     if (await write(() => Store.remove("albums", a.id))) toast(`Removed ${a.title}`, { label: "Undo", run: () => restoreAlbum(a) });
@@ -999,7 +1036,7 @@ const monthDay = (d) => new Date(d + "T12:00:00").toLocaleDateString(undefined, 
 const NEW = { data: null, loading: false, at: 0 };
 
 function newCard(a, target, note) {
-  const owned = allAlbums().find((x) => (a.deezerId && x.deezerId === a.deezerId) || (norm(x.title) === norm(a.title) && norm(x.artist) === norm(a.artist)));
+  const owned = allAlbums().find((x) => (a.deezerId && x.deezerId === a.deezerId) || Catalog.albumKey(x.title, x.artist) === Catalog.albumKey(a.title, a.artist));
   remember([a]);
   return `
   <div class="album sug" data-dz="${keyOf(a)}">
@@ -1100,7 +1137,7 @@ async function fetchYouTubeLikes(token) {
       const album = lines[2];
       const artist = (v.snippet.channelTitle || "").replace(/ - Topic$/, "") || artists[0] || "";
       if (!album || /^℗|^©|^Released on/.test(album)) continue;
-      const k = norm(album) + "|" + norm(artist);
+      const k = Catalog.albumKey(album, artist);
       const e = albums.get(k) || { k, title: album, artist, count: 0, songs: [], recent: rank };
       e.count++;
       if (e.songs.length < 3) e.songs.push(song);
@@ -1119,9 +1156,10 @@ const SPOTIFY_CHORE_MIN = 180; // three hours of listening
 function choreItems() {
   const c = S.raw?.meta?.chores || {};
   const skipped = new Set(c.skipped || []);
-  const owned = new Set(allAlbums().map((a) => norm(a.title) + "|" + norm(a.artist)));
+  const owned = new Set(allAlbums().map((a) => Catalog.albumKey(a.title, a.artist)));
   const byKey = new Map();
-  for (const i of c.items || []) byKey.set(i.k, { ...i, likes: i.count });
+  // Likes saved before editions were merged carry older keys, so re-key them here.
+  for (const i of c.items || []) { const k = Catalog.albumKey(i.title, i.artist); byKey.set(k, { ...i, k, likes: i.count }); }
   for (const a of HIST.summary?.albums || []) {
     if (a.min < SPOTIFY_CHORE_MIN) continue;
     const e = byKey.get(a.k) || { k: a.k, title: a.title, artist: a.artist, songs: [], likes: 0 };
@@ -1443,6 +1481,12 @@ rail.addEventListener("drop", async (e) => {
   const id = dragId, to = link.dataset.shelf;
   dragId = null;
   if (to === S.route.id) return;
+  const a = allAlbums().find((x) => x.id === id);
+  if (a && shelfById(to).albums.some((x) => Catalog.albumKey(x.title, x.artist) === Catalog.albumKey(a.title, a.artist))) {
+    // Already on that shelf: dropping it there just takes it off this one.
+    if (await write(() => Store.remove("albums", id))) toast(`It was already on ${shelfById(to).name}, so it's now only there`, { label: "Undo", run: () => restoreAlbum(a) });
+    return;
+  }
   if (await moveAlbum(id, to, 0)) toast(`Moved to ${shelfById(to).name}`);
 });
 

@@ -370,8 +370,8 @@ function albumsOf(data) {
   for (const r of data.tracks) {
     const t = Object.fromEntries(TF.map((f, i) => [f, r[i]]));
     const artist = t.compilation ? "Various Artists" : (t.albumArtist || t.artist);
-    const k = norm(t.album || "(no album)") + "|" + norm(artist);
-    const a = byKey.get(k) || { k, title: t.album || "(no album)", artist, year: t.year, genre: t.genre, songs: 0, plays: 0, last: "", added: "", rated: [], loved: 0, ids: [] };
+    const k = Catalog.albumKey(t.album || "(no album)", artist);
+    const a = byKey.get(k) || { k, title: Catalog.baseTitle(t.album) || "(no album)", artist, year: t.year, genre: t.genre, songs: 0, plays: 0, last: "", added: "", rated: [], loved: 0, ids: [] };
     a.songs++; a.plays += t.plays || 0; a.ids.push(t.id);
     if (t.lastPlayed > a.last) a.last = t.lastPlayed;
     // A rebuilt library resets "date added"; the file's own date is often the truer "when I got it".
@@ -440,8 +440,8 @@ function vaultBrowse(d) {
   // Songs from hidden playlists (handmade mixes) shouldn't show up as albums either.
   const hiddenIds = new Set(d.playlists.filter((p) => hiddenPlaylists().has(p.name)).flatMap((p) => p.items));
   const fromHidden = (a) => a.ids.every((id) => hiddenIds.has(id));
-  const sortedKeys = new Set(allAlbums().map((x) => norm(x.title) + "|" + norm(x.artist)));
-  const isSorted = (a) => sortedKeys.has(norm(a.title) + "|" + norm(a.artist));
+  const sortedKeys = new Set(allAlbums().map((x) => Catalog.albumKey(x.title, x.artist)));
+  const isSorted = (a) => sortedKeys.has(a.k);
   const hideSorted = vaultPref("hideSorted", true);
   const counts = { mixes: albums.filter(fromHidden).length, sorted: albums.filter(isSorted).length };
   let list = albums.filter((a) => !fromHidden(a) && !(hideSorted && isSorted(a)) && (VAULT.showWorship || !Catalog.isWorship(a)) && (!VAULT.year || (a.added || "").startsWith(VAULT.year)) && (!q || `${a.title} ${a.artist} ${a.genre}`.toLowerCase().includes(q)));
@@ -450,7 +450,7 @@ function vaultBrowse(d) {
     rating: (a, b) => b.stars - a.stars || b.plays - a.plays, artist: (a, b) => a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title),
   };
   list.sort(sorters[VAULT.sort]);
-  const owned = new Map(allAlbums().map((x) => [norm(x.title) + "|" + norm(x.artist), x]));
+  const owned = new Map(allAlbums().map((x) => [Catalog.albumKey(x.title, x.artist), x]));
   const info = d.info;
   return `
     <p class="note">${VAULT.verified ? "<b>Saved and checked.</b> Everything below is stored in your account, so it's safe to unplug the drive. " : ""}
@@ -484,7 +484,7 @@ function vaultBrowse(d) {
     <div class="vault-table" role="table">
       <div class="vrow vhead" role="row"><span>Album</span><span>Songs</span><span>Plays</span><span>Added</span><span>Rating</span><span></span></div>
       ${list.slice(0, VAULT.shown).map((a) => {
-        const have = owned.get(norm(a.title) + "|" + norm(a.artist));
+        const have = owned.get(a.k);
         return `
         <div class="vrow" role="row" data-vk="${esc(a.k)}">
           <span class="vt"><b>${esc(a.title)}</b><small>${esc(a.artist)}${a.year ? " · " + a.year : ""}${a.genre ? " · " + esc(a.genre) : ""}</small></span>
