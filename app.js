@@ -2,7 +2,7 @@
 
 // Set by bump.py to match index.html. A browser that kept an old copy of the page would
 // run new code against old markup (missing scripts), so it refreshes itself once instead.
-const APP_BUILD = "20261030021158";
+const APP_BUILD = "20261030022104";
 (function selfHeal() {
   if (!window.CRATE_VERSION || window.CRATE_VERSION === APP_BUILD || APP_BUILD === "dev") return;
   let tried = false;
@@ -12,15 +12,20 @@ const APP_BUILD = "20261030021158";
   throw new Error("Crate is updating. Reloading…");
 })();
 
-// If anything fails while starting up, say so instead of leaving a blank page.
-window.addEventListener("error", (e) => {
-  if (document.getElementById("crash")) return;
-  const msg = String(e.message || "Something went wrong.");
-  if (/Crate is updating/.test(msg)) return;
-  document.body.insertAdjacentHTML("beforeend", `<div id="crash" class="toast" role="alert" style="top:16px;bottom:auto">
-    <span>Crate hit a problem: ${msg.replace(/[<>&]/g, "")}</span><button id="crash-reload">Reload</button></div>`);
+// If anything fails, say so (with details to copy) instead of leaving a blank page.
+function showCrash(err) {
+  const msg = String(err?.message || err || "Something went wrong.");
+  if (/Crate is updating/.test(msg) || document.getElementById("crash")) return;
+  const where = String(err?.stack || "").split("\n").find((l) => /\.js/.test(l)) || "";
+  const details = `${msg}\n${where.trim()}\nVersion ${window.CRATE_VERSION || "?"} · ${navigator.userAgent}`;
+  const clean = (s) => s.replace(/[<>&]/g, "");
+  document.body.insertAdjacentHTML("beforeend", `<div id="crash" class="toast" role="alert" style="top:16px;bottom:auto;flex-wrap:wrap;max-width:min(640px,calc(100vw - 32px))">
+    <span>Crate hit a problem: ${clean(msg)}</span><button id="crash-copy">Copy details</button><button id="crash-reload">Reload</button></div>`);
   document.getElementById("crash-reload").onclick = () => (typeof hardRefresh === "function" ? hardRefresh() : location.reload());
-});
+  document.getElementById("crash-copy").onclick = () => navigator.clipboard?.writeText(details).then(() => { document.getElementById("crash-copy").textContent = "Copied"; }, () => prompt("Copy these details:", details));
+}
+window.addEventListener("error", (e) => showCrash(e.error || e.message));
+window.addEventListener("unhandledrejection", (e) => showCrash(e.reason));
 
 const PALETTE = ["#8a4bd6", "#2f7fd1", "#d46a1f", "#23a07a", "#c8344a", "#c99a1c", "#3a9fb0", "#b8487f", "#5d6b7a", "#6aa121"];
 const HOME_LIMIT = 12;
@@ -71,6 +76,10 @@ function rebuild() {
 const liveOpen = () => [...document.querySelectorAll("form.live .live-list")].some((l) => !l.hidden);
 
 function onData(raw) {
+  try { applyData(raw); } catch (e) { showCrash(e); }
+}
+
+function applyData(raw) {
   S.raw = raw;
   rebuild();
   applyPendingYtLinks();
@@ -224,7 +233,9 @@ function wireTheme() {
 }
 
 function renderRail() {
-  $("#shelf-nav").innerHTML = S.lib.shelves.map((s) => crateCard(s)).join("");
+  // Plain links if the cover-card code didn't load, so the crates are still reachable.
+  $("#shelf-nav").innerHTML = S.lib.shelves.map((s) => (typeof crateCard === "function" ? crateCard(s)
+    : `<a class="rail-link" href="#shelf-${s.id}" data-shelf="${s.id}"><span>${esc(s.name)}</span><span class="count">${s.albums.length}</span></a>`)).join("");
   markActive();
 }
 
@@ -556,6 +567,13 @@ function goSearch(q) {
 
 // ------------------------------------------------------------------ views
 
+/** The crate's cover banner, or a plain big title if the cover code didn't load. */
+function heroOf(s, opts) {
+  if (typeof crateCard === "function") return crateCard(s, opts);
+  const t = opts.title || "h2";
+  return `<${t} class="shelf-title cc-title">${opts.tag === "div" ? esc(s.name) : `<a href="#shelf-${s.id}">${esc(s.name)}</a>`}</${t}>`;
+}
+
 function shelfAttrs(s) {
   return `class="shelf" style="--shelf:${esc(s.color)}"`;
 }
@@ -581,7 +599,7 @@ function renderHome() {
     ${order.map((s) => `
       <section ${shelfAttrs(s)}>
         <div class="shelf-head">
-          ${crateCard(s, { cls: "crate-card crate-hero home-hero", title: "h2", count: false })}
+          ${heroOf(s, { cls: "crate-card crate-hero home-hero", title: "h2", count: false })}
           <div class="head-row">
             ${swatch(s)}
             <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
@@ -615,7 +633,7 @@ function renderShelf(id) {
   view.innerHTML = `
     <section ${shelfAttrs(s)}>
       <div class="shelf-head" id="shelf-head">
-        ${crateCard(s, { tag: "div", cls: "crate-card crate-hero", title: "h1", count: false })}
+        ${heroOf(s, { tag: "div", cls: "crate-card crate-hero", title: "h1", count: false })}
         ${swatch(s)}
         <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
         <div class="head-actions">
@@ -705,6 +723,13 @@ function route() {
 }
 
 function render() {
+  try { renderView(); } catch (e) {
+    view.innerHTML = `<div class="empty offline">This page couldn't be shown (${esc(e.message)}). Your crates are safe; use the sidebar or Reload.</div>`;
+    showCrash(e);
+  }
+}
+
+function renderView() {
   if (!S.raw) return;
   closeMenu();
   const r = S.route;
@@ -946,8 +971,8 @@ async function shelfAction(act) {
   const s = shelfById(S.route.id);
   const head = $("#shelf-head");
   if (act === "rename") {
-    head.querySelector(".crate-hero .cc-title").outerHTML =
-      `<form class="cc-title" id="rename-form" style="${fontStyle(s)}"><input class="rename" id="rename-input" value="${esc(s.name)}" aria-label="Crate name"></form>`;
+    head.querySelector(".cc-title").outerHTML =
+      `<form class="cc-title" id="rename-form" style="${typeof fontStyle === "function" ? fontStyle(s) : ""}"><input class="rename" id="rename-input" value="${esc(s.name)}" aria-label="Crate name"></form>`;
     const input = $("#rename-input");
     input.focus(); input.select();
     let done = false;
@@ -1518,4 +1543,5 @@ window.addEventListener("hashchange", route);
 $("#top-search").innerHTML = liveBox({ placeholder: "Search any album or artist to add" });
 Store.onAuth((user) => { S.user = user; renderAccount(); });
 renderAccount();
-Store.start(onData, { toast }).then(route);
+window.__crateBooted = true;
+Store.start(onData, { toast }).catch(showCrash).finally(() => { try { route(); } catch (e) { showCrash(e); } });

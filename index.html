@@ -2,6 +2,21 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
+<script>
+  /* Written in old, plain JavaScript on purpose: it reports problems even if newer code can't run. */
+  window.__crateErrors = [];
+  window.addEventListener("error", function (e) {
+    window.__crateErrors.push((e.message || "error") + (e.filename ? " (" + e.filename.split("/").pop().split("?")[0] + ":" + e.lineno + ")" : ""));
+  }, true);
+  setTimeout(function () {
+    if (window.__crateBooted) return;
+    var d = document.createElement("div");
+    d.className = "toast"; d.setAttribute("role", "alert");
+    d.style.cssText = "top:16px;bottom:auto;max-width:calc(100vw - 32px);white-space:normal;user-select:text";
+    d.textContent = "Crate didn't start. " + (window.__crateErrors.join(" | ") || "No error was reported.") + " · " + navigator.userAgent;
+    document.body.appendChild(d);
+  }, 8000);
+</script>
 <script>try { document.documentElement.dataset.theme = localStorage.getItem("crate:theme") || "dark"; } catch (e) {}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Crate</title>
@@ -17,7 +32,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Permanent+Marker&display=swap">
 <!-- Crate title fonts: downloaded only when a crate uses one. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Oswald:wght@700&family=Archivo+Black&family=Unbounded:wght@800&family=Syne:wght@800&family=Space+Grotesk:wght@700&family=Abril+Fatface&family=DM+Serif+Display&family=Fraunces:opsz,wght@9..144,900&family=Righteous&family=Bungee&family=Rubik+Mono+One&display=swap">
-<link rel="stylesheet" href="style.css?v=20261030021158">
+<link rel="stylesheet" href="style.css?v=20261030022104">
 </head>
 <body>
 <div class="app">
@@ -49,13 +64,13 @@
 </div>
 <div id="menu" class="menu" hidden></div>
 <div id="toast" class="toast" role="status" hidden></div>
-<script>window.CRATE_VERSION = "20261030021158";</script>
-<script src="config.js?v=20261030021158"></script>
-<script src="catalog.js?v=20261030021158"></script>
-<script src="store.js?v=20261030021158"></script>
-<script src="app.js?v=20261030021158"></script>
-<script src="crates.js?v=20261030021158"></script>
-<script src="history.js?v=20261030021158"></script>
-<script src="vault.js?v=20261030021158"></script>
+<script>window.CRATE_VERSION = "20261030022104";</script>
+<script src="config.js?v=20261030022104"></script>
+<script src="catalog.js?v=20261030022104"></script>
+<script src="store.js?v=20261030022104"></script>
+<script src="app.js?v=20261030022104"></script>
+<script src="crates.js?v=20261030022104"></script>
+<script src="history.js?v=20261030022104"></script>
+<script src="vault.js?v=20261030022104"></script>
 </body>
 </html>
