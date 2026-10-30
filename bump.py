@@ -8,4 +8,7 @@ h = re.sub(r'window\.CRATE_VERSION = "\w*";', f'window.CRATE_VERSION = "{v}";', 
 if "CRATE_VERSION" not in h:
     h = h.replace('<script src="config.js', f'<script>window.CRATE_VERSION = "{v}";</script>\n<script src="config.js', 1)
 open("index.html", "w").write(h)
+a = open("app.js").read()
+a = re.sub(r'const APP_BUILD = "\w*";', f'const APP_BUILD = "{v}";', a, count=1)
+open("app.js", "w").write(a)
 print(v)

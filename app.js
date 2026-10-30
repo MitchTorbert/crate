@@ -1,5 +1,27 @@
 "use strict";
 
+// Set by bump.py to match index.html. A browser that kept an old copy of the page would
+// run new code against old markup (missing scripts), so it refreshes itself once instead.
+const APP_BUILD = "20261030021158";
+(function selfHeal() {
+  if (!window.CRATE_VERSION || window.CRATE_VERSION === APP_BUILD || APP_BUILD === "dev") return;
+  let tried = false;
+  try { tried = sessionStorage.getItem("crate:healed") === APP_BUILD; sessionStorage.setItem("crate:healed", APP_BUILD); } catch {}
+  if (tried) return;
+  Promise.all(["./", "index.html"].map((f) => fetch(f, { cache: "reload" }).catch(() => {}))).then(() => location.reload());
+  throw new Error("Crate is updating. Reloading…");
+})();
+
+// If anything fails while starting up, say so instead of leaving a blank page.
+window.addEventListener("error", (e) => {
+  if (document.getElementById("crash")) return;
+  const msg = String(e.message || "Something went wrong.");
+  if (/Crate is updating/.test(msg)) return;
+  document.body.insertAdjacentHTML("beforeend", `<div id="crash" class="toast" role="alert" style="top:16px;bottom:auto">
+    <span>Crate hit a problem: ${msg.replace(/[<>&]/g, "")}</span><button id="crash-reload">Reload</button></div>`);
+  document.getElementById("crash-reload").onclick = () => (typeof hardRefresh === "function" ? hardRefresh() : location.reload());
+});
+
 const PALETTE = ["#8a4bd6", "#2f7fd1", "#d46a1f", "#23a07a", "#c8344a", "#c99a1c", "#3a9fb0", "#b8487f", "#5d6b7a", "#6aa121"];
 const HOME_LIMIT = 12;
 
