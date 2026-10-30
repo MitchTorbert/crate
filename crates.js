@@ -340,7 +340,7 @@ function crateCard(s, { tag = "a", cls = "crate-card", title = "span", count = t
 
 // ------------------------------------------------------------------ the "Edit crate" dialog
 
-const ED = { shelfId: null, name: "", note: "", titleColor: "#ffffff", mode: "auto", src: "", data: "", size: 100, x: 50, y: 50, font: "", ratio: 1, shown: [], armed: false };
+const ED = { query: "", shelfId: null, name: "", note: "", titleColor: "#ffffff", mode: "auto", src: "", data: "", size: 100, x: 50, y: 50, font: "", ratio: 1, shown: [], armed: false };
 const FONT_GRID = 12;
 
 function openCrateEditor(shelfId) {
@@ -353,6 +353,7 @@ function openCrateEditor(shelfId) {
     font: s.font || FONTS[0].id, ratio: 1, armed: false,
   });
   ED.initial = editorSnapshot();
+  ED.query = "";
   ED.shown = [ED.font, ...Catalog.shuffle(FONTS.map((f) => f.id).filter((id) => id !== ED.font), Catalog.rng(Math.random())).slice(0, FONT_GRID - 1)];
   let dlg = $("#cover-editor");
   if (!dlg) {
@@ -383,8 +384,7 @@ function drawEditor() {
   const s = shelfById(ED.shelfId);
   const dlg = $("#cover-editor");
   const covers = [...new Map(s.albums.filter((a) => a.cover).map((a) => [a.cover, a])).values()];
-  const shownFonts = ED.shown.map((id) => FONTS.find((f) => f.id === id)).filter(Boolean);
-  previewFonts(shownFonts, ED.name || s.name);
+
   dlg.innerHTML = `
     <form method="dialog" class="ce-body">
       <div class="ce-sticky">
@@ -398,7 +398,7 @@ function drawEditor() {
       </div>
       <div class="ce-fields">
         <label class="ce-field"><span class="label">Name</span><input id="ce-name" value="${esc(ED.name)}" autocomplete="off" maxlength="80"></label>
-        <label class="ce-field"><span class="label">Description</span>
+        <label class="ce-field"><span class="label">Notes</span>
           <textarea id="ce-note" rows="2" placeholder="What this crate is: the years, the car, the friends…">${esc(ED.note)}</textarea></label>
       </div>
       <div class="ce-section">
@@ -418,9 +418,9 @@ function drawEditor() {
       </div>
       <div class="ce-section">
         <div class="ce-font-head"><div class="label">Title font</div>
+          <input type="search" id="ce-font-search" placeholder="Search fonts by name" value="${esc(ED.query)}" autocomplete="off" aria-label="Search fonts">
           <button type="button" class="btn" id="ce-shuffle" title="Keep the selected font, swap all the others">Shuffle fonts</button></div>
-        <div class="ce-fonts">${shownFonts.map((f) => `<button type="button" class="ce-font ${ED.font === f.id ? "on" : ""}" data-ce-font="${f.id}" title="${esc(f.name)}"
-          style="${fontCss(f)}"><span>${esc(ED.name || s.name)}</span><small>${esc(f.name)}</small></button>`).join("")}</div>
+        <div class="ce-fonts" id="ce-fonts"></div>
       </div>
       <div class="ce-foot"><button type="button" class="btn" id="ce-cancel">Cancel</button><button type="button" class="btn primary" id="ce-save">Save</button></div>
       <div class="ce-danger">
@@ -444,14 +444,38 @@ function measureImage() {
   im.src = ED.src || ED.data;
 }
 
+/** The font grid on its own, so searching doesn't redraw (and unfocus) the rest of the dialog. */
+function drawFontGrid() {
+  const s = shelfById(ED.shelfId), grid = $("#ce-fonts");
+  if (!grid) return;
+  const q = ED.query.trim().toLowerCase();
+  const list = q
+    ? FONTS.filter((f) => f.name.toLowerCase().includes(q) || f.id.includes(q.replace(/\s+/g, "-"))).slice(0, 24)
+    : ED.shown.map((id) => FONTS.find((f) => f.id === id)).filter(Boolean);
+  const label = ED.name || s.name;
+  previewFonts(list, label);
+  grid.innerHTML = list.length
+    ? list.map((f) => `<button type="button" class="ce-font ${ED.font === f.id ? "on" : ""}" data-ce-font="${f.id}" title="${esc(f.name)}"
+        style="${fontCss(f)}"><span>${esc(label)}</span><small>${esc(f.name)}</small></button>`).join("")
+    : `<p class="meta ce-hint">No font called “${esc(ED.query)}”.</p>`;
+  grid.querySelectorAll("[data-ce-font]").forEach((b) => (b.onclick = () => {
+    ED.font = b.dataset.ceFont;
+    ensureFonts([ED.font]);
+    grid.querySelectorAll("[data-ce-font]").forEach((x) => x.classList.toggle("on", x === b));
+    refreshPreview();
+  }));
+}
+
 function wireEditor() {
   const dlg = $("#cover-editor");
+  drawFontGrid();
+  $("#ce-font-search").oninput = (e) => { ED.query = e.target.value; drawFontGrid(); };
   $("#ce-name").oninput = (e) => {
     ED.name = e.target.value;
     refreshPreview();
     dlg.querySelectorAll(".ce-font span").forEach((x) => (x.textContent = ED.name || "Untitled"));
   };
-  $("#ce-name").onchange = () => previewFonts(ED.shown.map((id) => FONTS.find((f) => f.id === id)), ED.name);
+  $("#ce-name").onchange = () => drawFontGrid();
   $("#ce-note").oninput = (e) => { ED.note = e.target.value; };
   dlg.querySelectorAll("[data-ce-color]").forEach((b) => (b.onclick = () => {
     ED.titleColor = b.dataset.ceColor;
@@ -466,20 +490,17 @@ function wireEditor() {
     Object.assign(ED, { mode: "image", src: b.dataset.ceSrc, data: "", size: 100, x: 50, y: 50 });
     drawEditor(); measureImage();
   }));
-  dlg.querySelectorAll("[data-ce-font]").forEach((b) => (b.onclick = () => {
-    ED.font = b.dataset.ceFont;
-    ensureFonts([ED.font]);
-    dlg.querySelectorAll("[data-ce-font]").forEach((x) => x.classList.toggle("on", x === b));
-    refreshPreview();
-  }));
   $("#ce-shuffle").onclick = () => {
     // Keep the selected font where it is; replace every other slot with fonts not on screen.
+    if (!ED.shown.includes(ED.font)) ED.shown = [ED.font, ...ED.shown.slice(0, FONT_GRID - 1)];
     const keep = new Set(ED.shown);
     const fresh = Catalog.shuffle(FONTS.map((f) => f.id).filter((id) => !keep.has(id)), Catalog.rng(Math.random()));
     const pool = fresh.length >= FONT_GRID - 1 ? fresh : Catalog.shuffle(FONTS.map((f) => f.id).filter((id) => id !== ED.font), Catalog.rng(Math.random()));
     let n = 0;
     ED.shown = ED.shown.map((id) => (id === ED.font ? id : pool[n++]));
-    drawEditor();
+    ED.query = "";
+    $("#ce-font-search").value = "";
+    drawFontGrid();
     dlg.querySelector(".ce-fonts")?.scrollIntoView({ block: "nearest" });
   };
   $("#ce-file").onchange = async (e) => {

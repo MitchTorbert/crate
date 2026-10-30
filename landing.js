@@ -4,7 +4,7 @@
 //  3. Worth revisiting: albums you played a lot, but not for a long time.
 "use strict";
 
-const LAND = { seeds: { easy: 1, fresh: 1, revisit: 1 }, covers: new Map(), freshCache: new Map() };
+const LAND = { seeds: { easy: 1, fresh: 1, revisit: 1 }, covers: new Map(), found: new Map(), freshCache: new Map() };
 const LAND_N = 10;
 
 function landingHeard(taste, sp) {
@@ -26,7 +26,7 @@ function listenCard(a) {
       ${cover ? `<img src="${esc(cover)}" alt="" loading="lazy">` : discArt(a)}
       <span class="play" aria-hidden="true">▶</span>
     </a>
-    <div class="album-title">${esc(a.title)}</div>
+    <div class="album-title">${esc(a.title)}${yearTag(a.year ? a : LAND.found?.get(a.k))}</div>
     <div class="album-sub"><span class="artist">${esc(a.artist)}</span></div>
     ${a.label ? `<div class="reason" title="${esc(a.label)}">${esc(a.label)}</div>` : ""}
   </div>`;
@@ -137,6 +137,8 @@ async function loadLandCovers(items, id) {
     if (a.cover || LAND.covers.has(a.k)) continue;
     const hit = await Catalog.find(a.artist, a.title).catch(() => null);
     LAND.covers.set(a.k, hit?.cover || "");
+    if (hit) LAND.found.set(a.k, hit);
+    if (hit?.year) view.querySelectorAll(`.land-card[data-lk="${CSS.escape(a.k)}"] .album-title`).forEach((el) => { if (!el.querySelector(".yr-t")) el.insertAdjacentHTML("beforeend", yearTag(hit)); });
     if (hit?.cover) view.querySelectorAll(`.land-card[data-lk="${CSS.escape(a.k)}"] .cover`).forEach((el) => {
       el.classList.remove("burned");
       el.innerHTML = `<img src="${esc(hit.cover)}" alt=""><span class="play" aria-hidden="true">▶</span>`;

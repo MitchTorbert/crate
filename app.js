@@ -2,7 +2,7 @@
 
 // Set by bump.py to match index.html. A browser that kept an old copy of the page would
 // run new code against old markup (missing scripts), so it refreshes itself once instead.
-const APP_BUILD = "20261030030143";
+const APP_BUILD = "20261030234458";
 (function selfHeal() {
   if (!window.CRATE_VERSION || window.CRATE_VERSION === APP_BUILD || APP_BUILD === "dev") return;
   let tried = false;
@@ -157,6 +157,8 @@ function span(albums) {
   const lo = Math.min(...ys), hi = Math.max(...ys);
   return lo === hi ? `${lo}` : `${lo}–${hi}`;
 }
+/** A small "(2015)" after an album title, when the year is known. */
+const yearTag = (a) => (a?.year ? ` <span class="yr-t">(${esc(a.year)})</span>` : "");
 const discs = (n) => `${n} ${n === 1 ? "disc" : "discs"}`;
 
 function ago(ts) {
@@ -214,7 +216,7 @@ function parseTyped(text) {
 
 // ------------------------------------------------------------------ staying up to date
 
-const FILES = ["./", "index.html", "style.css", "app.js", "catalog.js", "store.js", "vault.js", "history.js", "crates.js", "landing.js", "config.js", "manifest.webmanifest", "version.json"];
+const FILES = ["./", "index.html", "style.css", "crate.js", "manifest.webmanifest", "version.json"];
 
 /** Re-download every file past the browser's cache, then reload. */
 async function hardRefresh() {
@@ -240,6 +242,10 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) chec
 
 function wireTheme() {
   $("#refresh").onclick = hardRefresh;
+  // The same two controls live in the phone menu.
+  const rr = $("#rail-refresh"), rt = $("#rail-theme");
+  if (rr) rr.onclick = hardRefresh;
+  if (rt) { rt.textContent = THEMES[themeNow()]; rt.onclick = () => $("#theme").click(); }
   $("#theme").onclick = () => {
     const order = Object.keys(THEMES);
     const next = order[(order.indexOf(themeNow()) + 1) % order.length];
@@ -317,8 +323,8 @@ function albumCard(a, { draggable = false } = {}) {
       <span class="play" aria-hidden="true">▶</span>
     </a>
     <button class="more" data-menu="${a.id}" aria-label="Options for ${esc(a.title)}" aria-haspopup="menu" aria-expanded="false">⋯</button>
-    <div class="album-title">${esc(a.title)}</div>
-    <div class="album-sub"><span class="artist">${esc(a.artist)}</span>${alsoOn(a)}<span class="yr">${a.year ?? ""}</span></div>
+    <div class="album-title">${esc(a.title)}${yearTag(a)}</div>
+    <div class="album-sub"><span class="artist">${esc(a.artist)}</span>${alsoOn(a)}</div>
   </div>`;
 }
 
@@ -346,8 +352,8 @@ function suggestionCard(a, target) {
       <span class="play" aria-hidden="true">▶</span>
     </a>
     ${a.reason ? `<button class="dismiss" data-dismiss="${keyOf(a)}" aria-label="Not for me: hide ${esc(a.title)}" title="Not for me">×</button>` : ""}
-    <div class="album-title">${esc(a.title)}</div>
-    <div class="album-sub"><span class="artist">${esc(a.artist)}</span><span class="yr">${a.year ?? ""}</span></div>
+    <div class="album-title">${esc(a.title)}${yearTag(a)}</div>
+    <div class="album-sub"><span class="artist">${esc(a.artist)}</span></div>
     ${foundNote(a) ? `<div class="reason" title="${esc(foundNote(a))}">${esc(foundNote(a))}</div>` : ""}
     <div class="add-row">
       <select aria-label="Crate to add ${esc(a.title)} to">${shelfOptions(target)}</select>
@@ -514,7 +520,7 @@ function renderLiveList(form, results, q) {
       return `
       <div class="live-item">
         <img src="${esc(a.cover)}" alt="" loading="lazy">
-        <span class="live-text"><b>${esc(a.title)}</b><small>${esc(a.artist)}${a.year ? " · " + a.year : ""}${a.viaTrack ? ` · has “${esc(a.viaTrack)}”` : ""}</small></span>
+        <span class="live-text"><b>${esc(a.title)}${yearTag(a)}</b><small>${esc(a.artist)}${a.viaTrack ? ` · has “${esc(a.viaTrack)}”` : ""}</small></span>
         <a class="link" href="${esc(Catalog.ytSearchUrl(a))}" target="_blank" rel="noopener" title="Listen first in YouTube Music">Listen</a>
         ${have ? `<span class="meta">Added</span>` : `<button type="button" class="btn primary" data-live-add="${keyOf(a)}">Add</button>`}
       </div>`;
@@ -606,10 +612,22 @@ function recentList(albums) {
   return `<div class="list">${albums.map((a) => `
     <a class="row" href="${esc(ytUrl(a))}" target="_blank" rel="noopener">
       ${a.cover ? `<img src="${esc(a.cover)}" alt="" loading="lazy">` : `<span class="mini burned"><span class="disc"></span></span>`}
-      <div style="min-width:0"><div class="t">${esc(a.title)}</div><div class="s">${esc(a.artist)}${a.year ? " · " + a.year : ""}</div></div>
+      <div style="min-width:0"><div class="t">${esc(a.title)}${yearTag(a)}</div><div class="s">${esc(a.artist)}</div></div>
       <div class="when"><span class="chip"><i class="dot" style="background:${esc(a.shelf.color)}"></i>${esc(a.shelf.name)}</span><div class="meta" style="margin-top:4px">${ago(a.addedAt)}</div></div>
     </a>`).join("")}</div>`;
 }
+
+// Phones get a simpler Crate: home is the stack of crate covers, and the menu sits behind ☰.
+const isPhone = () => window.matchMedia("(max-width: 760px)").matches;
+window.matchMedia("(max-width: 760px)").addEventListener?.("change", () => S.route.name === "home" && render());
+function setMenu(open) {
+  document.body.classList.toggle("menu-open", open);
+  $("#menu-toggle")?.setAttribute("aria-expanded", String(open));
+}
+$("#menu-toggle")?.addEventListener("click", () => setMenu(!document.body.classList.contains("menu-open")));
+$("#menu-close")?.addEventListener("click", () => setMenu(false));
+window.addEventListener("hashchange", () => setMenu(false));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
 
 /** All crates: just their covers, in your order. */
 function renderCrates() {
@@ -642,7 +660,6 @@ function renderShelf(id) {
         <div class="head-actions">
           <button class="btn" data-act="edit">Edit</button>
         </div>
-        ${s.note ? `<p class="note">${esc(s.note)}</p>` : ""}
       </div>
       ${s.albums.length
         ? `<div class="grid" id="shelf-grid">${s.albums.map((a) => albumCard(a, { draggable: true })).join("")}</div>
@@ -771,7 +788,7 @@ function renderView() {
   else if (r.name === "history") renderHistory();
   else if (r.name === "crates") renderCrates();
   else if (r.name === "search") renderSearch();
-  else if (typeof renderLanding === "function") renderLanding();
+  else if (typeof renderLanding === "function" && !isPhone()) renderLanding();
   else renderCrates();
   markActive();
 }
@@ -1075,7 +1092,7 @@ function newCard(a, target, note) {
     <a class="cover" href="${esc(owned ? ytUrl(owned) : Catalog.ytSearchUrl(a))}" target="_blank" rel="noopener" title="Open in YouTube Music">
       ${coverArt(a)}<span class="play" aria-hidden="true">▶</span>
     </a>
-    <div class="album-title">${esc(a.title)}</div>
+    <div class="album-title">${esc(a.title)}${yearTag(a)}</div>
     <div class="album-sub"><span class="artist">${esc(a.artist)}</span><span class="yr">${a.type === "ep" ? "EP" : ""}</span></div>
     <div class="reason" title="${esc(note)}">${esc(note)}</div>
     ${owned ? `<div class="meta on-shelf"><i class="dot" style="background:${esc(owned.shelf.color)}"></i>On ${esc(owned.shelf.name)}</div>` : `
@@ -1261,7 +1278,7 @@ function renderChores() {
             ${CHORES.covers.get(i.k) ? `<img src="${esc(CHORES.covers.get(i.k))}" alt="">` : `<span class="mini burned"><span class="disc"></span></span>`}
           </a>
           <div style="min-width:0">
-            <div class="t">${esc(i.title)}</div><div class="s">${esc(i.artist)}</div>
+            <div class="t">${esc(i.title)}${yearTag(CHORES.found.get(i.k))}</div><div class="s">${esc(i.artist)}</div>
             <div class="meta">${esc(choreWhy(i))}</div>
           </div>
           <div class="ib-actions">
@@ -1286,6 +1303,8 @@ async function loadChoreCovers(items) {
     const a = await Catalog.find(i.artist, i.title).catch(() => null);
     CHORES.covers.set(i.k, a?.cover || "");
     if (a) CHORES.found.set(i.k, a);
+    const t = a?.year && view.querySelector(`.inbox-row[data-k="${CSS.escape(i.k)}"] .t`);
+    if (t && !t.querySelector(".yr-t")) t.insertAdjacentHTML("beforeend", yearTag(a));
     if (a?.cover) {
       const img = view.querySelector(`.inbox-row[data-k="${CSS.escape(i.k)}"] .ib-cover`);
       if (img) img.innerHTML = `<img src="${esc(a.cover)}" alt="">`;

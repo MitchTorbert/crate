@@ -555,3 +555,42 @@ a.crate-card:hover { transform: translateY(-1px); }
   .rail-pages { flex-direction: row; margin: 0; padding: 0; border: 0; }
   .rail-pages .rail-link { white-space: nowrap; }
 }
+
+/* titles: room for descenders (g, y, p) under the line clamp */
+.cc-title { line-height: 1.08; padding: .04em 0 .14em; }
+.ce-font span { line-height: 1.25; padding-bottom: .08em; }
+.ce-font-head input { flex: 1; min-width: 0; max-width: 260px; padding: 6px 10px; border-radius: var(--radius); background: var(--raise); border: 1px solid var(--line); color: var(--fg); }
+
+/* the small "(2015)" after album titles */
+.yr-t { font-weight: 400; font-size: .8em; color: var(--muted); font-family: var(--mono); letter-spacing: 0; white-space: nowrap; }
+
+/* ---------- phones: a stack of crates, and a ☰ menu instead of a scrolling strip */
+.hamburger, .top-brand, .rail-close, .rail-account { display: none; }
+.rail-top { display: flex; align-items: center; justify-content: space-between; }
+@media (max-width: 760px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .rail { display: none; }
+  body.menu-open { overflow: hidden; }
+  body.menu-open .rail {
+    display: flex; position: fixed; inset: 0; z-index: 60; flex-direction: column; flex-wrap: nowrap; align-items: stretch;
+    gap: 6px; height: auto; overflow-y: auto; overflow-x: hidden; border: 0; background: var(--panel);
+    padding: calc(14px + env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) calc(28px + env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
+  }
+  .rail .brand { padding: 0; }
+  .rail-close { display: block; background: none; border: 0; color: var(--fg); font-size: 22px; padding: 6px 10px; cursor: pointer; }
+  .rail .rail-label, .rail #shelf-nav { display: none; }
+  .rail .new-shelf { display: flex; margin-top: 14px; }
+  .rail .new-shelf input { width: auto; flex: 1; font-size: 16px; padding: 10px 12px; }
+  .rail nav.rail-pages { flex-direction: column; gap: 2px; margin: 14px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line); }
+  .rail-pages .rail-link { font-size: 18px; padding: 11px 8px; white-space: normal; }
+  .rail-pages .rail-link .count { display: inline; }
+  .rail-account { display: flex; gap: 8px; margin-top: 18px; }
+  .top { flex-wrap: wrap; gap: 10px; padding-top: calc(10px + env(safe-area-inset-top, 0px)); }
+  .hamburger { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--raise); color: var(--fg); font-size: 20px; cursor: pointer; }
+  .top-brand { display: inline-block; font-size: 26px; padding: 0; }
+  .top-brand::after { font-size: 10px; }
+  #account { order: 1; }
+  #account #refresh, #account #theme { display: none; }
+  #top-search { order: 2; flex: 1 1 100%; }
+  .crate-grid { gap: 12px; }
+}

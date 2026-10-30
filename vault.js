@@ -487,7 +487,7 @@ function vaultBrowse(d) {
         const have = owned.get(a.k);
         return `
         <div class="vrow" role="row" data-vk="${esc(a.k)}">
-          <span class="vt"><b>${esc(a.title)}</b><small>${esc(a.artist)}${a.year ? " · " + a.year : ""}${a.genre ? " · " + esc(a.genre) : ""}</small></span>
+          <span class="vt"><b>${esc(a.title)}${yearTag(a)}</b><small>${esc(a.artist)}${a.genre ? " · " + esc(a.genre) : ""}</small></span>
           <span class="num">${a.songs}</span><span class="num">${a.plays.toLocaleString()}</span>
           <span class="num">${shortDate(a.added)}</span><span class="stars">${stars(a.stars)}</span>
           <span class="vact">${have ? `<span class="meta"><i class="dot" style="background:${esc(have.shelf.color)}"></i>${esc(have.shelf.name)}</span>`

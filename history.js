@@ -249,7 +249,7 @@ function histBrowse(h) {
             ${HIST.covers.get(a.k) ? `<img src="${esc(HIST.covers.get(a.k))}" alt="">` : `<span class="mini burned"><span class="disc"></span></span>`}
           </a>
           <div style="min-width:0">
-            <div class="t"><span class="rank">${n + 1}</span>${esc(a.title)}${a.editions > 1 ? ` <span class="meta" title="Plays from ${a.editions} editions are combined">${a.editions} editions</span>` : ""}</div><div class="s">${esc(a.artist)}</div>
+            <div class="t"><span class="rank">${n + 1}</span>${esc(a.title)}${yearTag(HIST.found.get(a.k))}${a.editions > 1 ? ` <span class="meta" title="Plays from ${a.editions} editions are combined">${a.editions} editions</span>` : ""}</div><div class="s">${esc(a.artist)}</div>
             <div class="meta">${hours(a.min)} hours${y ? ` in ${y}` : ""} · ${a.plays.toLocaleString()} plays all time · ${monthYear(a.first)}–${monthYear(a.last)}</div>
           </div>
           <div class="ib-actions">${have ? `<span class="meta"><i class="dot" style="background:${esc(have.shelf.color)}"></i>${esc(have.shelf.name)}</span>`
@@ -286,6 +286,8 @@ async function loadHistCovers(items) {
     const hit = await Catalog.find(a.artist, a.title).catch(() => null);
     HIST.covers.set(a.k, hit?.cover || "");
     if (hit) HIST.found.set(a.k, hit);
+    const t = hit?.year && view.querySelector(`.hist-row[data-hk="${CSS.escape(a.k)}"] .t`);
+    if (t && !t.querySelector(".yr-t")) t.insertAdjacentHTML("beforeend", yearTag(hit));
     if (hit?.cover) {
       const el = view.querySelector(`.hist-row[data-hk="${CSS.escape(a.k)}"] .ib-cover`);
       if (el) el.innerHTML = `<img src="${esc(hit.cover)}" alt="">`;
