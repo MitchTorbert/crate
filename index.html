@@ -30,14 +30,20 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Permanent+Marker&display=swap">
-<link rel="stylesheet" href="style.css?v=20261030023915">
+<link rel="stylesheet" href="style.css?v=20261030030143">
 </head>
 <body>
 <div class="app">
   <aside class="rail" aria-label="Library">
-    <a class="brand" href="#home">Crate</a>
-    <nav>
-      <a class="rail-link" href="#home" data-route="home">All crates</a>
+    <a class="brand" href="#home" title="Home">Crate</a>
+    <div class="rail-label">Crates</div>
+    <nav id="shelf-nav" aria-label="Crates"></nav>
+    <form id="new-shelf" class="new-shelf">
+      <input id="new-shelf-name" placeholder="New crate…" aria-label="New crate name" autocomplete="off">
+      <button class="btn" aria-label="Create crate">+</button>
+    </form>
+    <nav class="rail-pages" aria-label="Pages">
+      <a class="rail-link" href="#crates" data-route="crates">All crates</a>
       <a class="rail-link" href="#new" data-route="new">New releases</a>
       <a class="rail-link" href="#chores" data-route="chores"><span>Sorting chores</span><span class="count" id="chores-count"></span></a>
       <a class="rail-link" href="#recent" data-route="recent">Recently added</a>
@@ -45,12 +51,6 @@
       <a class="rail-link" href="#vault" data-route="vault">Old hard drive</a>
       <a class="rail-link" href="#links" data-route="links">Album links</a>
     </nav>
-    <div class="rail-label">Crates</div>
-    <nav id="shelf-nav"></nav>
-    <form id="new-shelf" class="new-shelf">
-      <input id="new-shelf-name" placeholder="New crate…" aria-label="New crate name" autocomplete="off">
-      <button class="btn" aria-label="Create crate">+</button>
-    </form>
   </aside>
   <main>
     <header class="top">
@@ -62,13 +62,14 @@
 </div>
 <div id="menu" class="menu" hidden></div>
 <div id="toast" class="toast" role="status" hidden></div>
-<script>window.CRATE_VERSION = "20261030023915";</script>
-<script src="config.js?v=20261030023915"></script>
-<script src="catalog.js?v=20261030023915"></script>
-<script src="store.js?v=20261030023915"></script>
-<script src="app.js?v=20261030023915"></script>
-<script src="crates.js?v=20261030023915"></script>
-<script src="history.js?v=20261030023915"></script>
-<script src="vault.js?v=20261030023915"></script>
+<script>window.CRATE_VERSION = "20261030030143";</script>
+<script src="config.js?v=20261030030143"></script>
+<script src="catalog.js?v=20261030030143"></script>
+<script src="store.js?v=20261030030143"></script>
+<script src="app.js?v=20261030030143"></script>
+<script src="crates.js?v=20261030030143"></script>
+<script src="history.js?v=20261030030143"></script>
+<script src="landing.js?v=20261030030143"></script>
+<script src="vault.js?v=20261030030143"></script>
 </body>
 </html>

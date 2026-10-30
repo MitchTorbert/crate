@@ -2,7 +2,7 @@
 
 // Set by bump.py to match index.html. A browser that kept an old copy of the page would
 // run new code against old markup (missing scripts), so it refreshes itself once instead.
-const APP_BUILD = "20261030023915";
+const APP_BUILD = "20261030030143";
 (function selfHeal() {
   if (!window.CRATE_VERSION || window.CRATE_VERSION === APP_BUILD || APP_BUILD === "dev") return;
   let tried = false;
@@ -28,13 +28,11 @@ window.addEventListener("error", (e) => showCrash(e.error || e.message));
 window.addEventListener("unhandledrejection", (e) => showCrash(e.reason));
 
 const PALETTE = ["#8a4bd6", "#2f7fd1", "#d46a1f", "#23a07a", "#c8344a", "#c99a1c", "#3a9fb0", "#b8487f", "#5d6b7a", "#6aa121"];
-const HOME_LIMIT = 12;
 
 const S = {
   raw: null,
   lib: { shelves: [] },
   route: { name: "home" },
-  homeSeed: Math.random().toString(36).slice(2), // a new shelf order on every visit
   seeds: {},
   sugg: {},          // shelfId -> { key, items, loading }
   lastShelf: null,
@@ -169,8 +167,27 @@ function ago(ts) {
   return new Date(ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+// Every change that offers Undo can also be undone later with Cmd+Z (Ctrl+Z), newest first.
+const undoStack = [];
+document.addEventListener("keydown", async (e) => {
+  if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "z") return;
+  if (e.target.closest?.("input, textarea, select, [contenteditable]") || $("#cover-editor")?.open) return;
+  const last = undoStack.pop();
+  if (!last) return;
+  e.preventDefault();
+  await last.run();
+  toast(`Undid: ${last.msg}`);
+});
+
 let toastTimer;
 function toast(msg, action) {
+  if (action?.label === "Undo") {
+    const entry = { msg, run: action.run };
+    undoStack.push(entry);
+    if (undoStack.length > 50) undoStack.shift();
+    const run = action.run;
+    action = { ...action, run: () => { const i = undoStack.indexOf(entry); if (i >= 0) undoStack.splice(i, 1); return run(); } };
+  }
   const t = $("#toast");
   t.innerHTML = `<span>${esc(msg)}</span>`;
   if (action) {
@@ -197,7 +214,7 @@ function parseTyped(text) {
 
 // ------------------------------------------------------------------ staying up to date
 
-const FILES = ["./", "index.html", "style.css", "app.js", "catalog.js", "store.js", "vault.js", "history.js", "crates.js", "config.js", "manifest.webmanifest", "version.json"];
+const FILES = ["./", "index.html", "style.css", "app.js", "catalog.js", "store.js", "vault.js", "history.js", "crates.js", "landing.js", "config.js", "manifest.webmanifest", "version.json"];
 
 /** Re-download every file past the browser's cache, then reload. */
 async function hardRefresh() {
@@ -353,7 +370,9 @@ function oldLibrary() {
       .then((d) => {
         if (!d) { oldLoad = null; return null; }
         VAULT.data = VAULT.data || d;
-        const albums = albumsOf(d).filter((x) => x.title !== "(no album)" && x.plays > 0 && !Catalog.isWorship(x));
+        // Leave out handmade mixes you've hidden on the Old hard drive page.
+        const hiddenIds = new Set(d.playlists.filter((p) => hiddenPlaylists().has(p.name)).flatMap((p) => p.items));
+        const albums = albumsOf(d).filter((x) => x.title !== "(no album)" && x.plays > 0 && !Catalog.isWorship(x) && !x.ids.every((id) => hiddenIds.has(id)));
         const artistPlays = new Map();
         for (const x of albums) artistPlays.set(norm(x.artist), (artistPlays.get(norm(x.artist)) || 0) + x.plays);
         return { albums, artistPlays };
@@ -399,7 +418,11 @@ function suggestBlock(shelf, title, n, layout) {
       <span class="meta">From artists in this crate and the bands around them</span>
       <button class="btn" data-refresh="${shelf.id}">Shuffle</button>
     </div>
-    ${liveBox({ shelfId: shelf.id, placeholder: `Have one in mind? Search to add it to ${shelf.name}` })}
+    <div class="sug-tools">
+      ${liveBox({ shelfId: shelf.id, placeholder: `Have one in mind? Search to add it to ${shelf.name}` })}
+      ${S.route.name === "shelf" ? `<button class="btn" data-act="list">Add a list</button>` : ""}
+    </div>
+    ${S.list?.shelfId === shelf.id && S.route.name === "shelf" ? listForm(shelf) : ""}
     <div class="sug-items ${layout}">${skeletons(Math.min(n, 6))}</div>
   </section>`;
 }
@@ -588,48 +611,17 @@ function recentList(albums) {
     </a>`).join("")}</div>`;
 }
 
-const isPhone = () => window.matchMedia("(max-width: 760px)").matches;
-window.matchMedia("(max-width: 760px)").addEventListener?.("change", () => S.route.name === "home" && render());
-
-/** On a phone, home is simply the crates, as covers, in your order. */
-function renderPhoneHome() {
-  view.innerHTML = `
-    <div class="phone-crates">
-      ${S.lib.shelves.map((s) => (typeof crateCard === "function" ? crateCard(s) : `<a class="rail-link" href="#shelf-${s.id}">${esc(s.name)}</a>`)).join("")}
-    </div>`;
-}
-
-function renderHome() {
-  if (S.lib.shelves.length && isPhone()) { renderPhoneHome(); return; }
+/** All crates: just their covers, in your order. */
+function renderCrates() {
   if (!S.lib.shelves.length) {
     view.innerHTML = `<div class="empty offline">No crates yet. Name your first one in “New crate…”.</div>`;
     return;
   }
-  const recent = allAlbums().sort((a, b) => b.addedAt - a.addedAt).slice(0, 8);
-  const order = Catalog.shuffle(S.lib.shelves, Catalog.rng(S.homeSeed));
   view.innerHTML = `
-    ${order.map((s) => `
-      <section ${shelfAttrs(s)}>
-        <div class="shelf-head">
-          ${heroOf(s, { cls: "crate-card crate-hero home-hero", title: "h2", count: false })}
-          <div class="head-row">
-            <button class="btn btn-small" data-edit-crate="${s.id}">Edit</button>
-            <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
-            ${s.albums.length > HOME_LIMIT ? `<a class="see-all" href="#shelf-${s.id}">All ${s.albums.length} →</a>` : ""}
-          </div>
-          ${s.note ? `<p class="note">${esc(s.note)}</p>` : ""}
-        </div>
-        ${s.albums.length
-          ? `<div class="grid">${s.albums.slice(0, HOME_LIMIT).map((a) => albumCard(a)).join("")}</div>`
-          : `<div class="empty">Nothing here yet. Search below to add the first album.</div>`}
-        ${suggestBlock(s, `Fits in ${s.name}`, 8, "strip")}
-      </section>`).join("")}
-    ${recent.length ? `
-      <section class="shelf plain">
-        <div class="shelf-head"><h2 class="shelf-title"><a href="#recent">Recently added</a></h2></div>
-        ${recentList(recent)}
-      </section>` : ""}`;
-  fillSuggestions();
+    <h1 class="page-title">All crates</h1>
+    <div class="crate-grid">
+      ${S.lib.shelves.map((s) => (typeof crateCard === "function" ? crateCard(s) : `<a class="rail-link" href="#shelf-${s.id}">${esc(s.name)}</a>`)).join("")}
+    </div>`;
 }
 
 function renderShelf(id) {
@@ -648,12 +640,10 @@ function renderShelf(id) {
         ${heroOf(s, { tag: "div", cls: "crate-card crate-hero", title: "h1", count: false })}
         <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
         <div class="head-actions">
-          <button class="btn" data-act="list">Add a list</button>
-          <button class="btn primary" data-act="edit">Edit</button>
+          <button class="btn" data-act="edit">Edit</button>
         </div>
         ${s.note ? `<p class="note">${esc(s.note)}</p>` : ""}
       </div>
-      ${S.list?.shelfId === s.id ? listForm(s) : ""}
       ${s.albums.length
         ? `<div class="grid" id="shelf-grid">${s.albums.map((a) => albumCard(a, { draggable: true })).join("")}</div>
            <p class="meta" style="margin-top:18px">Drag covers to reorder, or drop one in a crate in the sidebar to move it.</p>`
@@ -721,11 +711,44 @@ function route() {
   else if (h === "chores") S.route = { name: "chores" };
   else if (h === "vault") S.route = { name: "vault" };
   else if (h === "history") S.route = { name: "history" };
+  else if (h === "crates") S.route = { name: "crates" };
   else if (h.startsWith("ytlinks=")) { receiveYtLinks(h.slice(8)); return; }
   else if (h === "search" && S.query) S.route = { name: "search" };
   else S.route = { name: "home" };
   render();
   window.scrollTo(0, 0);
+  // Opening a crate from its card: the card grows into the banner and the albums tumble out.
+  if (S.flip && S.route.name === "shelf" && S.flip.id === S.route.id) animateCrateOpen(S.flip.rect);
+  S.flip = null;
+}
+
+document.addEventListener("click", (e) => {
+  const card = e.target.closest?.("a.crate-card[href]");
+  if (card) S.flip = { id: card.dataset.shelf, rect: card.getBoundingClientRect() };
+}, true);
+
+function animateCrateOpen(from) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const hero = view.querySelector(".crate-hero");
+  if (!hero?.animate) return;
+  const to = hero.getBoundingClientRect();
+  if (!to.width) return;
+  const dx = from.left - to.left, dy = from.top - to.top, s = from.width / to.width;
+  hero.style.transformOrigin = "top left";
+  hero.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${s})` }, { transform: "none" }], { duration: 560, easing: "cubic-bezier(.2,.85,.25,1)" });
+  const rest = [...view.querySelectorAll("#shelf-head > :not(.crate-hero)")];
+  rest.forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 380, fill: "backwards" }));
+  // Albums drop out of the bottom of the banner, with a little bounce and spin.
+  [...view.querySelectorAll("#shelf-grid .album")].slice(0, 36).forEach((el, i) => {
+    const r = el.getBoundingClientRect();
+    const fromY = to.bottom - r.top - r.height * 0.6;
+    const spin = (i % 3 - 1) * 7;
+    el.animate([
+      { transform: `translateY(${fromY}px) scale(.55) rotate(${spin}deg)`, opacity: 0 },
+      { opacity: 1, offset: 0.35 },
+      { transform: "none", opacity: 1 },
+    ], { duration: 700, delay: 330 + i * 45, easing: "cubic-bezier(.34,1.56,.64,1)", fill: "backwards" });
+  });
 }
 
 function render() {
@@ -746,8 +769,10 @@ function renderView() {
   else if (r.name === "chores") renderChores();
   else if (r.name === "vault") renderVault();
   else if (r.name === "history") renderHistory();
+  else if (r.name === "crates") renderCrates();
   else if (r.name === "search") renderSearch();
-  else renderHome();
+  else if (typeof renderLanding === "function") renderLanding();
+  else renderCrates();
   markActive();
 }
 

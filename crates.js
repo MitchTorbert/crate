@@ -120,6 +120,155 @@ const FONTS = [
   { id: "sedgwick", name: "Sedgwick Ave Display", q: "Sedgwick Ave Display", scale: 1.1 },
   { id: "knewave", name: "Knewave", q: "Knewave" },
   { id: "lacquer", name: "Lacquer", q: "Lacquer" },
+  // more from the Google Fonts catalog: display, handwriting and a few serifs, sized by their width
+  { id: "nova-flat", name: "Nova Flat", q: "Nova Flat", scale: 0.95 },
+  { id: "changa-one", name: "Changa One", q: "Changa One", scale: 0.95 },
+  { id: "syne-tactile", name: "Syne Tactile", q: "Syne Tactile", scale: 0.9 },
+  { id: "comfortaa", name: "Comfortaa", q: "Comfortaa:wght@700", weight: 700, scale: 0.88 },
+  { id: "lilita-one", name: "Lilita One", q: "Lilita One", scale: 0.95 },
+  { id: "lobster-two", name: "Lobster Two", q: "Lobster Two:wght@700", weight: 700 },
+  { id: "comic-relief", name: "Comic Relief", q: "Comic Relief:wght@700", weight: 700, scale: 0.9 },
+  { id: "gravitas-one", name: "Gravitas One", q: "Gravitas One", scale: 0.78 },
+  { id: "titan-one", name: "Titan One", q: "Titan One", scale: 0.88 },
+  { id: "oxanium", name: "Oxanium", q: "Oxanium:wght@800", weight: 800, scale: 0.9 },
+  { id: "concert-one", name: "Concert One", q: "Concert One", scale: 0.95 },
+  { id: "patua-one", name: "Patua One", q: "Patua One", scale: 0.95 },
+  { id: "balsamiq-sans", name: "Balsamiq Sans", q: "Balsamiq Sans:wght@700", weight: 700, scale: 0.9 },
+  { id: "oleo-script", name: "Oleo Script", q: "Oleo Script:wght@700", weight: 700 },
+  { id: "rammetto-one", name: "Rammetto One", q: "Rammetto One", scale: 0.88 },
+  { id: "cabin-sketch", name: "Cabin Sketch", q: "Cabin Sketch:wght@700", weight: 700, scale: 0.95 },
+  { id: "forum", name: "Forum", q: "Forum" },
+  { id: "racing-sans-one", name: "Racing Sans One", q: "Racing Sans One", scale: 0.95 },
+  { id: "goldman", name: "Goldman", q: "Goldman:wght@700", weight: 700, scale: 0.9 },
+  { id: "rowdies", name: "Rowdies", q: "Rowdies:wght@700", weight: 700, scale: 0.9 },
+  { id: "caprasimo", name: "Caprasimo", q: "Caprasimo", scale: 0.9 },
+  { id: "iceberg", name: "Iceberg", q: "Iceberg" },
+  { id: "fugaz-one", name: "Fugaz One", q: "Fugaz One", scale: 0.88 },
+  { id: "funnel-display", name: "Funnel Display", q: "Funnel Display:wght@800", weight: 800, scale: 0.9 },
+  { id: "grandstander", name: "Grandstander", q: "Grandstander:wght@900", weight: 900, scale: 0.9 },
+  { id: "passion-one", name: "Passion One", q: "Passion One:wght@900", weight: 900, scale: 0.95 },
+  { id: "bowlby-one", name: "Bowlby One", q: "Bowlby One", scale: 0.88 },
+  { id: "chelsea-market", name: "Chelsea Market", q: "Chelsea Market", scale: 0.88 },
+  { id: "carter-one", name: "Carter One", q: "Carter One", scale: 0.95 },
+  { id: "chango", name: "Chango", q: "Chango", scale: 0.78 },
+  { id: "gabarito", name: "Gabarito", q: "Gabarito:wght@900", weight: 900, scale: 0.9 },
+  { id: "skranji", name: "Skranji", q: "Skranji:wght@700", weight: 700, scale: 0.88 },
+  { id: "love-ya-like-a-sister", name: "Love Ya Like A Sister", q: "Love Ya Like A Sister", scale: 0.95 },
+  { id: "galindo", name: "Galindo", q: "Galindo", scale: 0.88 },
+  { id: "squada-one", name: "Squada One", q: "Squada One" },
+  { id: "cinzel-decorative", name: "Cinzel Decorative", q: "Cinzel Decorative:wght@900", weight: 900, scale: 0.78 },
+  { id: "boogaloo", name: "Boogaloo", q: "Boogaloo" },
+  { id: "poller-one", name: "Poller One", q: "Poller One", scale: 0.88 },
+  { id: "stardos-stencil", name: "Stardos Stencil", q: "Stardos Stencil:wght@700", weight: 700, scale: 0.95 },
+  { id: "playball", name: "Playball", q: "Playball" },
+  { id: "vina-sans", name: "Vina Sans", q: "Vina Sans", scale: 0.9 },
+  { id: "phudu", name: "Phudu", q: "Phudu:wght@900", weight: 900, scale: 0.9 },
+  { id: "corben", name: "Corben", q: "Corben:wght@700", weight: 700, scale: 0.78 },
+  { id: "fredericka-the-great", name: "Fredericka the Great", q: "Fredericka the Great", scale: 0.95 },
+  { id: "kranky", name: "Kranky", q: "Kranky", scale: 0.95 },
+  { id: "dynapuff", name: "DynaPuff", q: "DynaPuff:wght@700", weight: 700, scale: 0.9 },
+  { id: "calistoga", name: "Calistoga", q: "Calistoga", scale: 0.9 },
+  { id: "milonga", name: "Milonga", q: "Milonga", scale: 0.95 },
+  { id: "anybody", name: "Anybody", q: "Anybody:wght@900", weight: 900, scale: 0.9 },
+  { id: "ruslan-display", name: "Ruslan Display", q: "Ruslan Display", scale: 0.88 },
+  { id: "atomic-age", name: "Atomic Age", q: "Atomic Age", scale: 0.88 },
+  { id: "unica-one", name: "Unica One", q: "Unica One", scale: 0.95 },
+  { id: "metamorphous", name: "Metamorphous", q: "Metamorphous", scale: 0.88 },
+  { id: "sigmar-one", name: "Sigmar One", q: "Sigmar One", scale: 0.88 },
+  { id: "red-rose", name: "Red Rose", q: "Red Rose:wght@700", weight: 700, scale: 0.9 },
+  { id: "averia-serif-libre", name: "Averia Serif Libre", q: "Averia Serif Libre:wght@700", weight: 700, scale: 0.95 },
+  { id: "overlock", name: "Overlock", q: "Overlock:wght@900", weight: 900, scale: 0.95 },
+  { id: "alkatra", name: "Alkatra", q: "Alkatra:wght@700", weight: 700, scale: 0.9 },
+  { id: "amarante", name: "Amarante", q: "Amarante", scale: 0.95 },
+  { id: "pixelify-sans", name: "Pixelify Sans", q: "Pixelify Sans:wght@700", weight: 700, scale: 0.9 },
+  { id: "bubblegum-sans", name: "Bubblegum Sans", q: "Bubblegum Sans" },
+  { id: "sniglet", name: "Sniglet", q: "Sniglet:wght@800", weight: 800, scale: 0.88 },
+  { id: "rubik-doodle-shadow", name: "Rubik Doodle Shadow", q: "Rubik Doodle Shadow", scale: 0.9 },
+  { id: "bungee-inline", name: "Bungee Inline", q: "Bungee Inline", scale: 0.88 },
+  { id: "big-shoulders-text", name: "Big Shoulders Text", q: "Big Shoulders:wght@900", weight: 900, scale: 0.9 },
+  { id: "turret-road", name: "Turret Road", q: "Turret Road:wght@800", weight: 800, scale: 0.9 },
+  { id: "mclaren", name: "McLaren", q: "McLaren", scale: 0.88 },
+  { id: "museomoderno", name: "MuseoModerno", q: "MuseoModerno:wght@900", weight: 900, scale: 0.9 },
+  { id: "flamenco", name: "Flamenco", q: "Flamenco:wght@400" },
+  { id: "sancreek", name: "Sancreek", q: "Sancreek", scale: 0.95 },
+  { id: "modern-antiqua", name: "Modern Antiqua", q: "Modern Antiqua", scale: 0.88 },
+  { id: "autour-one", name: "Autour One", q: "Autour One", scale: 0.88 },
+  { id: "zen-dots", name: "Zen Dots", q: "Zen Dots", scale: 0.9 },
+  { id: "revalia", name: "Revalia", q: "Revalia", scale: 0.78 },
+  { id: "macondo", name: "Macondo", q: "Macondo", scale: 0.95 },
+  { id: "sansita-swashed", name: "Sansita Swashed", q: "Sansita Swashed:wght@900", weight: 900, scale: 0.9 },
+  { id: "original-surfer", name: "Original Surfer", q: "Original Surfer", scale: 0.95 },
+  { id: "coda", name: "Coda", q: "Coda:wght@800", weight: 800, scale: 0.88 },
+  { id: "londrina-solid", name: "Londrina Solid", q: "Londrina Solid:wght@900", weight: 900, scale: 0.9 },
+  { id: "barriecito", name: "Barriecito", q: "Barriecito", scale: 0.9 },
+  { id: "sarina", name: "Sarina", q: "Sarina", scale: 0.88 },
+  { id: "croissant-one", name: "Croissant One", q: "Croissant One", scale: 0.88 },
+  { id: "freeman", name: "Freeman", q: "Freeman", scale: 0.9 },
+  { id: "aboreto", name: "Aboreto", q: "Aboreto", scale: 0.9 },
+  { id: "coiny", name: "Coiny", q: "Coiny", scale: 0.9 },
+  { id: "redaction-100", name: "Redaction 100", q: "Redaction 100:wght@700", weight: 700, scale: 0.9 },
+  { id: "arima", name: "Arima", q: "Arima:wght@700", weight: 700, scale: 0.9 },
+  { id: "rubik-bubbles", name: "Rubik Bubbles", q: "Rubik Bubbles", scale: 0.9 },
+  { id: "averia-sans-libre", name: "Averia Sans Libre", q: "Averia Sans Libre:wght@700", weight: 700, scale: 0.95 },
+  { id: "slackey", name: "Slackey", q: "Slackey", scale: 0.88 },
+  { id: "orelega-one", name: "Orelega One", q: "Orelega One", scale: 0.9 },
+  { id: "prosto-one", name: "Prosto One", q: "Prosto One", scale: 0.88 },
+  { id: "shojumaru", name: "Shojumaru", q: "Shojumaru", scale: 0.78 },
+  { id: "dynalight", name: "Dynalight", q: "Dynalight", scale: 1.05 },
+  { id: "averia-libre", name: "Averia Libre", q: "Averia Libre:wght@700", weight: 700, scale: 0.95 },
+  { id: "single-day", name: "Single Day", q: "Single Day", scale: 0.9 },
+  { id: "germania-one", name: "Germania One", q: "Germania One" },
+  { id: "road-rage", name: "Road Rage", q: "Road Rage", scale: 0.9 },
+  { id: "protest-strike", name: "Protest Strike", q: "Protest Strike", scale: 0.9 },
+  { id: "zen-loop", name: "Zen Loop", q: "Zen Loop", scale: 0.9 },
+  { id: "oregano", name: "Oregano", q: "Oregano", scale: 1.05 },
+  { id: "elsie", name: "Elsie", q: "Elsie:wght@900", weight: 900, scale: 0.88 },
+  { id: "uncial-antiqua", name: "Uncial Antiqua", q: "Uncial Antiqua", scale: 0.88 },
+  { id: "unlock", name: "Unlock", q: "Unlock", scale: 0.88 },
+  { id: "trade-winds", name: "Trade Winds", q: "Trade Winds", scale: 0.88 },
+  { id: "snowburst-one", name: "Snowburst One", q: "Snowburst One", scale: 0.88 },
+  { id: "big-shoulders-inline", name: "Big Shoulders Inline", q: "Big Shoulders Inline:wght@900", weight: 900, scale: 0.9 },
+  { id: "bellota", name: "Bellota", q: "Bellota:wght@700", weight: 700, scale: 0.9 },
+  { id: "allan", name: "Allan", q: "Allan:wght@700", weight: 700, scale: 1.05 },
+  { id: "protest-riot", name: "Protest Riot", q: "Protest Riot", scale: 0.9 },
+  { id: "caesar-dressing", name: "Caesar Dressing", q: "Caesar Dressing", scale: 0.95 },
+  { id: "dancing-script", name: "Dancing Script", q: "Dancing Script:wght@700", weight: 700 },
+  { id: "zeyada", name: "Zeyada", q: "Zeyada" },
+  { id: "caveat", name: "Caveat", q: "Caveat:wght@700", weight: 700, scale: 1.25 },
+  { id: "satisfy", name: "Satisfy", q: "Satisfy" },
+  { id: "delius", name: "Delius", q: "Delius", scale: 0.95 },
+  { id: "allura", name: "Allura", q: "Allura", scale: 1.05 },
+  { id: "kaushan-script", name: "Kaushan Script", q: "Kaushan Script" },
+  { id: "shadows-into-light", name: "Shadows Into Light", q: "Shadows Into Light" },
+  { id: "berkshire-swash", name: "Berkshire Swash", q: "Berkshire Swash", scale: 0.95 },
+  { id: "great-vibes", name: "Great Vibes", q: "Great Vibes", scale: 1.05 },
+  { id: "patrick-hand", name: "Patrick Hand", q: "Patrick Hand" },
+  { id: "sacramento", name: "Sacramento", q: "Sacramento", scale: 1.05 },
+  { id: "alex-brush", name: "Alex Brush", q: "Alex Brush", scale: 1.05 },
+  { id: "indie-flower", name: "Indie Flower", q: "Indie Flower", scale: 0.95 },
+  { id: "gloria-hallelujah", name: "Gloria Hallelujah", q: "Gloria Hallelujah", scale: 0.88 },
+  { id: "yellowtail", name: "Yellowtail", q: "Yellowtail", scale: 1.05 },
+  { id: "nothing-you-could-do", name: "Nothing You Could Do", q: "Nothing You Could Do", scale: 0.88 },
+  { id: "mr-dafoe", name: "Mr Dafoe", q: "Mr Dafoe" },
+  { id: "mrs-saint-delafield", name: "Mrs Saint Delafield", q: "Mrs Saint Delafield", scale: 1.15 },
+  { id: "comic-neue", name: "Comic Neue", q: "Comic Neue:wght@700", weight: 700, scale: 0.9 },
+  { id: "amatic-sc", name: "Amatic SC", q: "Amatic SC:wght@700", weight: 700, scale: 1.35 },
+  { id: "bad-script", name: "Bad Script", q: "Bad Script" },
+  { id: "courgette", name: "Courgette", q: "Courgette", scale: 0.95 },
+  { id: "pangolin", name: "Pangolin", q: "Pangolin", scale: 0.9 },
+  { id: "waiting-for-the-sunrise", name: "Waiting for the Sunrise", q: "Waiting for the Sunrise" },
+  { id: "pinyon-script", name: "Pinyon Script", q: "Pinyon Script" },
+  { id: "cedarville-cursive", name: "Cedarville Cursive", q: "Cedarville Cursive", scale: 0.95 },
+  { id: "la-belle-aurore", name: "La Belle Aurore", q: "La Belle Aurore", scale: 0.95 },
+  { id: "architects-daughter", name: "Architects Daughter", q: "Architects Daughter", scale: 0.95 },
+  { id: "neucha", name: "Neucha", q: "Neucha" },
+  { id: "instrument-serif", name: "Instrument Serif", q: "Instrument Serif", scale: 0.9 },
+  { id: "cinzel", name: "Cinzel", q: "Cinzel:wght@900", weight: 900, scale: 0.88 },
+  { id: "slabo-27px", name: "Slabo 27px", q: "Slabo 27px" },
+  { id: "slabo-13px", name: "Slabo 13px", q: "Slabo 13px", scale: 0.95 },
+  { id: "marcellus", name: "Marcellus", q: "Marcellus", scale: 0.95 },
+  { id: "volkhov", name: "Volkhov", q: "Volkhov:wght@700", weight: 700, scale: 0.88 },
+  { id: "unifrakturcook", name: "UnifrakturCook", q: "UnifrakturCook:wght@700", weight: 700 },
 ];
 const fontOf = (s) => FONTS.find((f) => f.id === s?.font) || FONTS[0];
 const fontCss = (f) => `font-family:'${f.q.split(":")[0]}','Arial Narrow',sans-serif;font-weight:${f.weight || 400};text-transform:${f.upper ? "uppercase" : "none"};--fs:${f.scale || 1}`;
@@ -169,19 +318,29 @@ function coverHtml(s) {
   return `<span class="cover-art collage">${covers.map((c) => `<img src="${esc(c)}" alt="" loading="lazy">`).join("")}</span>`;
 }
 
+// Title colors. Dark ones get a light glow behind them instead of a dark one.
+const TITLE_COLORS = ["#ffffff", "#f3ead7", "#111111", "#f0b44c", "#ff5a4f", "#ff7ac6", "#5ee0ff", "#a6ff5c", "#b18cff", "#ffe14d"];
+function isDark(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
+  if (!m) return false;
+  const [r, g, b] = m.slice(1).map((x) => parseInt(x, 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.45;
+}
+
 function crateCard(s, { tag = "a", cls = "crate-card", title = "span", count = true, draggable = false } = {}) {
   ensureFonts([s.font]);
   const href = tag === "a" ? ` href="#shelf-${s.id}"` : "";
-  return `<${tag} class="${cls}"${href} data-shelf="${s.id}"${draggable ? ' draggable="true"' : ""} style="--shelf:${esc(s.color)}">
+  const ink = s.titleColor || "#ffffff";
+  return `<${tag} class="${cls}${isDark(ink) ? " ink-dark" : ""}"${href} data-shelf="${s.id}"${draggable ? ' draggable="true"' : ""}>
     ${coverHtml(s)}<span class="cc-scrim"></span>
-    <${title} class="cc-title" style="${fontStyle(s)}">${esc(s.name || "Untitled")}</${title}>
+    <${title} class="cc-title" style="${fontStyle(s)};color:${esc(ink)}">${esc(s.name || "Untitled")}</${title}>
     ${count ? `<span class="cc-count">${(s.albums || []).length}</span>` : ""}
   </${tag}>`;
 }
 
 // ------------------------------------------------------------------ the "Edit crate" dialog
 
-const ED = { shelfId: null, name: "", note: "", color: "", mode: "auto", src: "", data: "", size: 100, x: 50, y: 50, font: "", ratio: 1, shown: [], armed: false };
+const ED = { shelfId: null, name: "", note: "", titleColor: "#ffffff", mode: "auto", src: "", data: "", size: 100, x: 50, y: 50, font: "", ratio: 1, shown: [], armed: false };
 const FONT_GRID = 12;
 
 function openCrateEditor(shelfId) {
@@ -189,16 +348,19 @@ function openCrateEditor(shelfId) {
   if (!s) return;
   const c = s.cover || {};
   Object.assign(ED, {
-    shelfId, name: s.name || "", note: s.note || "", color: s.color, mode: c.src || c.data ? "image" : "auto",
+    shelfId, name: s.name || "", note: s.note || "", titleColor: s.titleColor || "#ffffff", mode: c.src || c.data ? "image" : "auto",
     src: c.src || "", data: c.data || "", size: c.size || 100, x: c.x ?? 50, y: c.y ?? 50,
     font: s.font || FONTS[0].id, ratio: 1, armed: false,
   });
+  ED.initial = editorSnapshot();
   ED.shown = [ED.font, ...Catalog.shuffle(FONTS.map((f) => f.id).filter((id) => id !== ED.font), Catalog.rng(Math.random())).slice(0, FONT_GRID - 1)];
   let dlg = $("#cover-editor");
   if (!dlg) {
     document.body.insertAdjacentHTML("beforeend", `<dialog id="cover-editor" class="cover-editor" aria-label="Edit crate"></dialog>`);
     dlg = $("#cover-editor");
-    dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+    dlg.addEventListener("click", (e) => { if (e.target === dlg) tryCloseEditor(); });
+    // Esc asks too, when there are changes.
+    dlg.addEventListener("cancel", (e) => { e.preventDefault(); tryCloseEditor(); });
   }
   drawEditor();
   dlg.showModal();
@@ -206,9 +368,15 @@ function openCrateEditor(shelfId) {
 }
 const openCoverEditor = openCrateEditor; // older callers
 
+const editorSnapshot = () => JSON.stringify([ED.name, ED.note, ED.titleColor, ED.mode, ED.src, ED.data.length, ED.size, Math.round(ED.x), Math.round(ED.y), ED.font]);
+function tryCloseEditor() {
+  if (editorSnapshot() !== ED.initial && !confirm("You have unsaved changes to this crate. Close without saving?")) return;
+  $("#cover-editor").close();
+}
+
 function editorCrate() {
   const s = shelfById(ED.shelfId);
-  return { ...s, name: ED.name || s.name, color: ED.color, font: ED.font, cover: ED.mode === "image" ? { src: ED.src, data: ED.data, size: ED.size, x: ED.x, y: ED.y } : null };
+  return { ...s, name: ED.name || s.name, titleColor: ED.titleColor, font: ED.font, cover: ED.mode === "image" ? { src: ED.src, data: ED.data, size: ED.size, x: ED.x, y: ED.y } : null };
 }
 
 function drawEditor() {
@@ -219,12 +387,14 @@ function drawEditor() {
   previewFonts(shownFonts, ED.name || s.name);
   dlg.innerHTML = `
     <form method="dialog" class="ce-body">
-      <div class="ce-head"><h2>Edit crate</h2><button class="link" value="cancel">Close</button></div>
+      <div class="ce-sticky">
+      <div class="ce-head"><h2>Edit crate</h2><button type="button" class="link" id="ce-close">Close</button></div>
       <div class="ce-preview">
         <div class="crop-frame ${ED.mode === "image" ? "can-pan" : ""}" id="crop-frame">${crateCard(editorCrate(), { tag: "div", cls: "crate-card ce-card", count: false })}</div>
         ${ED.mode === "image" ? `
           <label class="ce-zoom"><span class="meta">Zoom</span><input type="range" id="ce-zoom" min="100" max="400" step="1" value="${ED.size}"></label>
           <p class="meta ce-hint">Drag the picture to choose what shows.</p>` : ""}
+      </div>
       </div>
       <div class="ce-fields">
         <label class="ce-field"><span class="label">Name</span><input id="ce-name" value="${esc(ED.name)}" autocomplete="off" maxlength="80"></label>
@@ -232,10 +402,10 @@ function drawEditor() {
           <textarea id="ce-note" rows="2" placeholder="What this crate is: the years, the car, the friends…">${esc(ED.note)}</textarea></label>
       </div>
       <div class="ce-section">
-        <div class="label">Color</div>
+        <div class="label">Title color</div>
         <div class="ce-colors">
-          ${PALETTE.map((c) => `<button type="button" class="sw ${c === ED.color ? "on" : ""}" data-ce-color="${c}" style="background:${c}" aria-label="Use ${c}"></button>`).join("")}
-          <input type="color" id="ce-color" value="${esc(ED.color)}" aria-label="Any color">
+          ${TITLE_COLORS.map((c) => `<button type="button" class="sw ${c === ED.titleColor ? "on" : ""}" data-ce-color="${c}" style="background:${c}" aria-label="Use ${c}"></button>`).join("")}
+          <input type="color" id="ce-color" value="${esc(ED.titleColor)}" aria-label="Any color">
         </div>
       </div>
       <div class="ce-section">
@@ -248,12 +418,11 @@ function drawEditor() {
       </div>
       <div class="ce-section">
         <div class="ce-font-head"><div class="label">Title font</div>
-          <button type="button" class="btn" id="ce-shuffle" title="Keep the selected font, swap all the others">Shuffle fonts</button>
-          <span class="meta">${FONTS.length} fonts</span></div>
+          <button type="button" class="btn" id="ce-shuffle" title="Keep the selected font, swap all the others">Shuffle fonts</button></div>
         <div class="ce-fonts">${shownFonts.map((f) => `<button type="button" class="ce-font ${ED.font === f.id ? "on" : ""}" data-ce-font="${f.id}" title="${esc(f.name)}"
           style="${fontCss(f)}"><span>${esc(ED.name || s.name)}</span><small>${esc(f.name)}</small></button>`).join("")}</div>
       </div>
-      <div class="ce-foot"><button class="btn" value="cancel">Cancel</button><button type="button" class="btn primary" id="ce-save">Save</button></div>
+      <div class="ce-foot"><button type="button" class="btn" id="ce-cancel">Cancel</button><button type="button" class="btn primary" id="ce-save">Save</button></div>
       <div class="ce-danger">
         <button type="button" class="btn danger" id="ce-delete">${ED.armed ? `Click again to delete “${esc(s.name)}”` : "Delete crate"}</button>
         <span class="meta">${s.albums.length ? `Removes the crate and its ${discs(s.albums.length)}. Albums that are also in other crates stay there.` : "This crate is empty."}</span>
@@ -285,12 +454,13 @@ function wireEditor() {
   $("#ce-name").onchange = () => previewFonts(ED.shown.map((id) => FONTS.find((f) => f.id === id)), ED.name);
   $("#ce-note").oninput = (e) => { ED.note = e.target.value; };
   dlg.querySelectorAll("[data-ce-color]").forEach((b) => (b.onclick = () => {
-    ED.color = b.dataset.ceColor;
+    ED.titleColor = b.dataset.ceColor;
     dlg.querySelectorAll("[data-ce-color]").forEach((x) => x.classList.toggle("on", x === b));
-    $("#ce-color").value = ED.color;
+    $("#ce-color").value = ED.titleColor;
     refreshPreview();
   }));
-  $("#ce-color").oninput = (e) => { ED.color = e.target.value; dlg.querySelectorAll("[data-ce-color]").forEach((x) => x.classList.remove("on")); refreshPreview(); };
+  $("#ce-color").oninput = (e) => { ED.titleColor = e.target.value; dlg.querySelectorAll("[data-ce-color]").forEach((x) => x.classList.remove("on")); refreshPreview(); };
+  $("#ce-close").onclick = $("#ce-cancel").onclick = tryCloseEditor;
   dlg.querySelector("[data-ce-auto]").onclick = () => { ED.mode = "auto"; drawEditor(); };
   dlg.querySelectorAll("[data-ce-src]").forEach((b) => (b.onclick = () => {
     Object.assign(ED, { mode: "image", src: b.dataset.ceSrc, data: "", size: 100, x: 50, y: 50 });
@@ -369,7 +539,7 @@ async function saveCrate() {
   const patch = {};
   if (name !== s.name) patch.name = name;
   if (ED.note.trim() !== (s.note || "")) patch.note = ED.note.trim();
-  if (ED.color !== s.color) patch.color = ED.color;
+  if (ED.titleColor !== (s.titleColor || "#ffffff")) patch.titleColor = ED.titleColor;
   if (ED.font !== (s.font || FONTS[0].id)) patch.font = ED.font;
   if (ok && Object.keys(patch).length) ok = await write(() => Store.update("shelves", id, patch));
   $("#cover-editor").close();
