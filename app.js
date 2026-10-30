@@ -2,7 +2,7 @@
 
 // Set by bump.py to match index.html. A browser that kept an old copy of the page would
 // run new code against old markup (missing scripts), so it refreshes itself once instead.
-const APP_BUILD = "20261030022104";
+const APP_BUILD = "20261030023915";
 (function selfHeal() {
   if (!window.CRATE_VERSION || window.CRATE_VERSION === APP_BUILD || APP_BUILD === "dev") return;
   let tried = false;
@@ -234,7 +234,7 @@ function wireTheme() {
 
 function renderRail() {
   // Plain links if the cover-card code didn't load, so the crates are still reachable.
-  $("#shelf-nav").innerHTML = S.lib.shelves.map((s) => (typeof crateCard === "function" ? crateCard(s)
+  $("#shelf-nav").innerHTML = S.lib.shelves.map((s) => (typeof crateCard === "function" ? crateCard(s, { draggable: true })
     : `<a class="rail-link" href="#shelf-${s.id}" data-shelf="${s.id}"><span>${esc(s.name)}</span><span class="count">${s.albums.length}</span></a>`)).join("");
   markActive();
 }
@@ -588,7 +588,19 @@ function recentList(albums) {
     </a>`).join("")}</div>`;
 }
 
+const isPhone = () => window.matchMedia("(max-width: 760px)").matches;
+window.matchMedia("(max-width: 760px)").addEventListener?.("change", () => S.route.name === "home" && render());
+
+/** On a phone, home is simply the crates, as covers, in your order. */
+function renderPhoneHome() {
+  view.innerHTML = `
+    <div class="phone-crates">
+      ${S.lib.shelves.map((s) => (typeof crateCard === "function" ? crateCard(s) : `<a class="rail-link" href="#shelf-${s.id}">${esc(s.name)}</a>`)).join("")}
+    </div>`;
+}
+
 function renderHome() {
+  if (S.lib.shelves.length && isPhone()) { renderPhoneHome(); return; }
   if (!S.lib.shelves.length) {
     view.innerHTML = `<div class="empty offline">No crates yet. Name your first one in “New crate…”.</div>`;
     return;
@@ -601,7 +613,7 @@ function renderHome() {
         <div class="shelf-head">
           ${heroOf(s, { cls: "crate-card crate-hero home-hero", title: "h2", count: false })}
           <div class="head-row">
-            ${swatch(s)}
+            <button class="btn btn-small" data-edit-crate="${s.id}">Edit</button>
             <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
             ${s.albums.length > HOME_LIMIT ? `<a class="see-all" href="#shelf-${s.id}">All ${s.albums.length} →</a>` : ""}
           </div>
@@ -634,16 +646,10 @@ function renderShelf(id) {
     <section ${shelfAttrs(s)}>
       <div class="shelf-head" id="shelf-head">
         ${heroOf(s, { tag: "div", cls: "crate-card crate-hero", title: "h1", count: false })}
-        ${swatch(s)}
         <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
         <div class="head-actions">
-          <button class="btn" data-act="cover">Cover &amp; font</button>
           <button class="btn" data-act="list">Add a list</button>
-          <button class="btn" data-act="rename">Rename</button>
-          <button class="btn" data-act="note">${s.note ? "Edit note" : "Add a note"}</button>
-          <button class="btn" data-act="up" ${i === 0 ? "disabled" : ""} aria-label="Move crate up">↑</button>
-          <button class="btn" data-act="down" ${i === S.lib.shelves.length - 1 ? "disabled" : ""} aria-label="Move crate down">↓</button>
-          <button class="btn danger" data-act="delete">Delete crate</button>
+          <button class="btn primary" data-act="edit">Edit</button>
         </div>
         ${s.note ? `<p class="note">${esc(s.note)}</p>` : ""}
       </div>
@@ -963,67 +969,21 @@ view.addEventListener("click", async (e) => {
     fillSuggestions();
     return;
   }
+  const editBtn = t.closest("[data-edit-crate]");
+  if (editBtn) { if (typeof openCrateEditor === "function") openCrateEditor(editBtn.dataset.editCrate); return; }
   const act = t.closest("[data-act]");
   if (act && S.route.name === "shelf") shelfAction(act.dataset.act);
 });
 
 async function shelfAction(act) {
   const s = shelfById(S.route.id);
-  const head = $("#shelf-head");
-  if (act === "rename") {
-    head.querySelector(".cc-title").outerHTML =
-      `<form class="cc-title" id="rename-form" style="${typeof fontStyle === "function" ? fontStyle(s) : ""}"><input class="rename" id="rename-input" value="${esc(s.name)}" aria-label="Crate name"></form>`;
-    const input = $("#rename-input");
-    input.focus(); input.select();
-    let done = false;
-    const finish = async (save) => {
-      if (done) return; done = true;
-      const name = input.value.trim();
-      input.blur();
-      if (save && name && name !== s.name) await write(() => Store.update("shelves", s.id, { name }));
-      render();
-    };
-    $("#rename-form").onsubmit = (e) => { e.preventDefault(); finish(true); };
-    input.onblur = () => finish(true);
-    input.onkeydown = (e) => { if (e.key === "Escape") finish(false); };
-  } else if (act === "note") {
-    head.querySelector(".note")?.remove();
-    head.insertAdjacentHTML("beforeend", `
-      <form id="note-form" style="flex:1 1 100%;display:flex;flex-direction:column;gap:8px">
-        <textarea class="note-edit" id="note-input" rows="2" placeholder="What this crate is about: the years, the car, the friends…">${esc(s.note)}</textarea>
-        <div><button class="btn primary">Save note</button></div>
-      </form>`);
-    $("#note-input").focus();
-    $("#note-form").onsubmit = async (e) => {
-      e.preventDefault();
-      const note = $("#note-input").value.trim();
-      $("#note-input").blur();
-      await write(() => Store.update("shelves", s.id, { note }));
-      render();
-    };
-  } else if (act === "cover") {
-    openCoverEditor(s.id);
+  if (!s) return;
+  if (act === "edit") {
+    if (typeof openCrateEditor === "function") openCrateEditor(s.id);
   } else if (act === "list") {
     if (!S.list || S.list.shelfId !== s.id) S.list = { shelfId: s.id, report: "", busy: false };
     render();
     $("#list-input")?.focus();
-  } else if (act === "up" || act === "down") {
-    const list = S.lib.shelves;
-    const i = list.indexOf(s), j = act === "up" ? i - 1 : i + 1;
-    const order = list.map((x) => x.id);
-    [order[i], order[j]] = [order[j], order[i]];
-    for (const [k, id] of order.entries()) {
-      if ((shelfById(id).order ?? -1) !== k) await write(() => Store.update("shelves", id, { order: k }));
-    }
-  } else if (act === "delete") {
-    if (s.albums.length) { toast(`Move or remove the ${discs(s.albums.length)} on ${s.name} first.`); return; }
-    const btn = head.querySelector('[data-act="delete"]');
-    if (btn.dataset.armed) {
-      if (await write(() => Store.remove("shelves", s.id))) { write(() => Store.remove("images", s.id)); location.hash = "home"; }
-    } else {
-      btn.dataset.armed = "1"; btn.textContent = "Click again to delete";
-      setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = "Delete crate"; } }, 4000);
-    }
   }
 }
 

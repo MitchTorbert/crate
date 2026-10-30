@@ -435,13 +435,13 @@ a.crate-card:hover { transform: translateY(-1px); }
 .cc-scrim { position: absolute; inset: 0; background: linear-gradient(0deg, rgba(0,0,0,.78) 0, rgba(0,0,0,.35) 45%, rgba(0,0,0,.05) 80%); }
 .cc-title {
   position: absolute; left: 6%; right: 16%; bottom: 9%; margin: 0;
-  font-size: clamp(15px, 10.5cqw, 120px); line-height: .95; letter-spacing: .005em; color: #fff;
+  font-size: calc(clamp(15px, 10.5cqw, 120px) * var(--fs, 1)); line-height: .95; letter-spacing: .005em; color: #fff;
   text-shadow: 0 2px 12px rgba(0,0,0,.55); text-wrap: balance; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .cc-count { position: absolute; right: 5%; bottom: 9%; font: 12px var(--mono); color: rgba(255,255,255,.85); font-variant-numeric: tabular-nums; }
 .crate-hero { flex: 1 1 100%; }
-.crate-hero .cc-title { font-size: clamp(28px, 9cqw, 132px); left: 4%; right: 4%; bottom: 10%; }
+.crate-hero .cc-title { font-size: calc(clamp(28px, 9cqw, 132px) * var(--fs, 1)); left: 4%; right: 4%; bottom: 10%; }
 .home-hero { max-width: 760px; }
 .head-row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; flex: 1 1 100%; }
 #rename-form input.rename { font: inherit; color: #fff; text-transform: inherit; border-bottom-color: #fff; }
@@ -482,4 +482,32 @@ a.crate-card:hover { transform: translateY(-1px); }
   #shelf-nav { flex-direction: row; padding: 0; }
   #shelf-nav .crate-card { flex: none; width: 150px; }
   .rail { align-items: center; }
+}
+
+/* crate reordering in the sidebar */
+#shelf-nav .crate-card.dragging { opacity: .4; }
+#shelf-nav .crate-card.drop-before { box-shadow: 0 -4px 0 -1px var(--accent); }
+#shelf-nav .crate-card.drop-after { box-shadow: 0 4px 0 -1px var(--accent); }
+.btn-small { padding: 3px 10px; font-size: 12px; }
+
+/* edit crate dialog: fields, colors, fonts, delete */
+.ce-fields { display: grid; gap: 10px; }
+.ce-field { display: grid; gap: 4px; }
+.ce-field .label { font: 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.ce-field input, .ce-field textarea { width: 100%; padding: 8px 10px; border-radius: var(--radius); background: var(--raise); color: var(--fg); border: 1px solid var(--line); font: 15px/1.4 var(--body); resize: vertical; }
+.ce-colors { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ce-colors input[type=color] { width: 38px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: none; cursor: pointer; }
+.ce-font-head { display: flex; gap: 12px; align-items: center; }
+.ce-font-head .label { margin-right: auto; }
+.ce-font { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; font-size: calc(22px * var(--fs, 1)); }
+.ce-font span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.15; }
+.ce-font small { font: 11px var(--mono); letter-spacing: .04em; text-transform: none; color: var(--muted); }
+.ce-danger { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding-top: 14px; border-top: 1px solid var(--line); }
+.ce-danger .meta { text-transform: none; letter-spacing: 0; }
+
+/* phone: home is a vertical list of crate covers */
+.phone-crates { display: grid; gap: 12px; margin-top: 12px; }
+.phone-crates .crate-card { width: 100%; }
+@media (max-width: 760px) {
+  #shelf-nav, .rail-label { display: none; }
 }
