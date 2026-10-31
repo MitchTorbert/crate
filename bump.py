@@ -18,6 +18,7 @@ open("app.js", "w").write(a)
 parts = [f'"use strict";\n// Crate {v}. Built from {", ".join(SOURCES)} by bump.py; edit those files, not this one.\n']
 for name in SOURCES:
     parts.append(f"\n// ===== {name} =====\n" + open(name).read().rstrip() + "\n")
+parts.append("\n// ===== start, now that everything above is set up =====\nbootCrate();\n")
 open("crate.js", "w").write("".join(parts))
 
 h = open("index.html").read()

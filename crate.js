@@ -1,5 +1,5 @@
 "use strict";
-// Crate 20261030234458. Built from config.js, catalog.js, store.js, app.js, crates.js, history.js, landing.js, vault.js by bump.py; edit those files, not this one.
+// Crate 20261031041219. Built from config.js, catalog.js, store.js, app.js, crates.js, history.js, landing.js, vault.js by bump.py; edit those files, not this one.
 
 // ===== config.js =====
 // Firebase web config is public by design; access is controlled by firestore.rules.
@@ -608,7 +608,7 @@ const Store = (() => {
 
 // Set by bump.py to match index.html. A browser that kept an old copy of the page would
 // run new code against old markup (missing scripts), so it refreshes itself once instead.
-const APP_BUILD = "20261030234458";
+const APP_BUILD = "20261031041219";
 (function selfHeal() {
   if (!window.CRATE_VERSION || window.CRATE_VERSION === APP_BUILD || APP_BUILD === "dev") return;
   let tried = false;
@@ -2149,12 +2149,16 @@ rail.addEventListener("drop", async (e) => {
 
 // ------------------------------------------------------------------ boot
 
-window.addEventListener("hashchange", route);
-$("#top-search").innerHTML = liveBox({ placeholder: "Search any album or artist to add" });
-Store.onAuth((user) => { S.user = user; renderAccount(); });
-renderAccount();
-window.__crateBooted = true;
-Store.start(onData, { toast }).catch(showCrash).finally(() => { try { route(); } catch (e) { showCrash(e); } });
+// Starts Crate. Called at the very end of crate.js (see bump.py), once every part of the app
+// has been set up; starting earlier could draw crates before the cover code exists.
+function bootCrate() {
+  window.addEventListener("hashchange", route);
+  $("#top-search").innerHTML = liveBox({ placeholder: "Search any album or artist to add" });
+  Store.onAuth((user) => { S.user = user; renderAccount(); });
+  renderAccount();
+  window.__crateBooted = true;
+  Store.start(onData, { toast }).catch(showCrash).finally(() => { try { route(); } catch (e) { showCrash(e); } });
+}
 
 // ===== crates.js =====
 // Crates: cover cards, title fonts, and the "Edit crate" dialog.
@@ -4028,3 +4032,6 @@ view.addEventListener("change", async (e) => {
   if (id) { addedToast(found?.title || a.title, sel.value, id); render(); }
   else { sel.disabled = false; sel.value = ""; }
 });
+
+// ===== start, now that everything above is set up =====
+bootCrate();

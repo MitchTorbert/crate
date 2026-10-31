@@ -2,7 +2,7 @@
 
 // Set by bump.py to match index.html. A browser that kept an old copy of the page would
 // run new code against old markup (missing scripts), so it refreshes itself once instead.
-const APP_BUILD = "20261030234458";
+const APP_BUILD = "20261031041219";
 (function selfHeal() {
   if (!window.CRATE_VERSION || window.CRATE_VERSION === APP_BUILD || APP_BUILD === "dev") return;
   let tried = false;
@@ -1543,9 +1543,13 @@ rail.addEventListener("drop", async (e) => {
 
 // ------------------------------------------------------------------ boot
 
-window.addEventListener("hashchange", route);
-$("#top-search").innerHTML = liveBox({ placeholder: "Search any album or artist to add" });
-Store.onAuth((user) => { S.user = user; renderAccount(); });
-renderAccount();
-window.__crateBooted = true;
-Store.start(onData, { toast }).catch(showCrash).finally(() => { try { route(); } catch (e) { showCrash(e); } });
+// Starts Crate. Called at the very end of crate.js (see bump.py), once every part of the app
+// has been set up; starting earlier could draw crates before the cover code exists.
+function bootCrate() {
+  window.addEventListener("hashchange", route);
+  $("#top-search").innerHTML = liveBox({ placeholder: "Search any album or artist to add" });
+  Store.onAuth((user) => { S.user = user; renderAccount(); });
+  renderAccount();
+  window.__crateBooted = true;
+  Store.start(onData, { toast }).catch(showCrash).finally(() => { try { route(); } catch (e) { showCrash(e); } });
+}
