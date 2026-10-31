@@ -2,7 +2,7 @@
 
 // Set by bump.py to match index.html. A browser that kept an old copy of the page would
 // run new code against old markup (missing scripts), so it refreshes itself once instead.
-const APP_BUILD = "20261031041219";
+const APP_BUILD = "20261031155653";
 (function selfHeal() {
   if (!window.CRATE_VERSION || window.CRATE_VERSION === APP_BUILD || APP_BUILD === "dev") return;
   let tried = false;
@@ -80,6 +80,7 @@ function onData(raw) {
 function applyData(raw) {
   S.raw = raw;
   rebuild();
+  syncShare();
   applyPendingYtLinks();
   renderRail();
   // Leave an open search dropdown alone so several albums can be added in a row.
@@ -257,7 +258,7 @@ function wireTheme() {
 
 function renderRail() {
   // Plain links if the cover-card code didn't load, so the crates are still reachable.
-  $("#shelf-nav").innerHTML = S.lib.shelves.map((s) => (typeof crateCard === "function" ? crateCard(s, { draggable: true })
+  $("#shelf-nav").innerHTML = S.lib.shelves.map((s) => (typeof crateCard === "function" ? crateCard(s, { draggable: !S.visitor })
     : `<a class="rail-link" href="#shelf-${s.id}" data-shelf="${s.id}"><span>${esc(s.name)}</span><span class="count">${s.albums.length}</span></a>`)).join("");
   markActive();
 }
@@ -629,17 +630,109 @@ $("#menu-close")?.addEventListener("click", () => setMenu(false));
 window.addEventListener("hashchange", () => setMenu(false));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
 
-/** All crates: just their covers, in your order. */
+/** All crates: just their covers, in your order. Visitors to a shared link land here. */
 function renderCrates() {
   if (!S.lib.shelves.length) {
-    view.innerHTML = `<div class="empty offline">No crates yet. Name your first one in “New crate…”.</div>`;
+    view.innerHTML = S.visitor ? `<div class="empty offline">There's nothing in these crates yet.</div>`
+      : `<div class="empty offline">No crates yet. Name your first one in “New crate…”.</div>`;
     return;
   }
+  const by = S.raw?.meta?.share?.by;
   view.innerHTML = `
-    <h1 class="page-title">All crates</h1>
+    <div class="crates-head">
+      <h1 class="page-title">${S.visitor ? esc(by ? `${by}'s crates` : "Shared crates") : "All crates"}</h1>
+      ${S.visitor ? "" : `<button class="btn" id="share-toggle">Share</button>`}
+    </div>
+    ${S.visitor ? `<p class="meta visitor-note">Shared from Crate. Tap an album to play it in YouTube Music.</p>` : `<div id="share-panel" ${S.sharePanel ? "" : "hidden"}>${sharePanel()}</div>`}
     <div class="crate-grid">
       ${S.lib.shelves.map((s) => (typeof crateCard === "function" ? crateCard(s) : `<a class="rail-link" href="#shelf-${s.id}">${esc(s.name)}</a>`)).join("")}
     </div>`;
+  if (!S.visitor) wireSharePanel();
+}
+
+// ------------------------------------------------------------------ sharing a read-only copy
+
+const shareState = () => S.raw?.meta?.share || {};
+const shareUrl = (id) => `${location.origin}${location.pathname}?share=${id}`;
+
+function sharePanel() {
+  if (!Store.canArchive()) return `<div class="share-box"><p class="note">Sign in to Crate (top right) to share your crates.</p></div>`;
+  const sh = shareState();
+  if (!sh.on) {
+    return `<div class="share-box">
+      <p class="note">Make a link anyone can open, no sign-in needed. They'll see your crates, covers and albums, and can play albums in YouTube Music.
+        Your notes, listening history and old library stay private. The link keeps up with your changes.</p>
+      <button class="btn primary" id="share-create">Create a share link</button></div>`;
+  }
+  return `<div class="share-box">
+    <div class="share-row"><input id="share-link" readonly value="${esc(shareUrl(sh.id))}" aria-label="Share link"><button class="btn primary" id="share-copy">Copy link</button></div>
+    <p class="meta share-status" id="share-status">${esc(S.shareStatus || "Anyone with this link can see your crates. It updates by itself when you change them.")}</p>
+    <button class="link danger-link" id="share-stop">Stop sharing</button></div>`;
+}
+
+function wireSharePanel() {
+  $("#share-toggle")?.addEventListener("click", () => { S.sharePanel = !S.sharePanel; render(); });
+  $("#share-create")?.addEventListener("click", async () => {
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(9)), (b) => "abcdefghijkmnpqrstuvwxyz23456789"[b % 32]).join("");
+    S.shareStatus = "Creating your link…";
+    if (await write(() => Store.set("meta", "share", { id, on: true }))) await syncShare(true);
+  });
+  $("#share-copy")?.addEventListener("click", async () => {
+    const input = $("#share-link");
+    try { await navigator.clipboard.writeText(input.value); toast("Copied the share link"); }
+    catch { input.select(); toast("Select the link and copy it"); }
+  });
+  $("#share-stop")?.addEventListener("click", async () => {
+    const sh = shareState();
+    try { await Store.unpublishShare(sh.id, Object.keys(S.shareImages || {})); } catch {}
+    S.shareImages = {}; S.lastShareJson = ""; S.shareStatus = "";
+    await write(() => Store.set("meta", "share", { id: null, on: false }));
+    toast("Stopped sharing. The old link no longer works.");
+  });
+}
+
+/** What a shared link shows: crates, their covers and albums. No notes or history. */
+function shareSnapshot() {
+  const shelves = {}, albums = {}, covers = {}, images = {};
+  for (const s of S.lib.shelves) {
+    shelves[s.id] = { name: s.name, order: s.order ?? 0, font: s.font || "", titleColor: s.titleColor || "", color: s.color };
+    const c = s.cover;
+    if (c?.src) covers[s.id] = { src: c.src, size: c.size || 100, x: c.x ?? 50, y: c.y ?? 50 };
+    else if (c?.data) { covers[s.id] = { uploaded: true, size: c.size || 100, x: c.x ?? 50, y: c.y ?? 50 }; images[s.id] = { data: c.data }; }
+    for (const a of s.albums) {
+      albums[a.id] = { shelfId: s.id, pos: a.pos, title: a.title || "", artist: a.artist || "", year: a.year ?? null, cover: a.cover || "", ytUrl: a.ytUrl || "" };
+    }
+  }
+  const by = (Store.displayName() || "").split(" ")[0];
+  return { snapshot: { shelves, albums, covers, by }, images };
+}
+
+let shareTimer = null;
+/** Keep the shared copy current: a few seconds after changes settle, write only what changed. */
+async function syncShare(now = false) {
+  const sh = shareState();
+  if (S.visitor || !sh.on || !sh.id || !Store.canArchive()) return;
+  clearTimeout(shareTimer);
+  if (!now) { shareTimer = setTimeout(() => syncShare(true), 3000); return; }
+  const { snapshot, images } = shareSnapshot();
+  const json = JSON.stringify(snapshot);
+  const sig = (d) => `${d.data.length}:${d.data.slice(-64)}`;
+  const prev = S.shareImages || {};
+  const changed = Object.fromEntries(Object.entries(images).filter(([id, d]) => prev[id] !== sig(d)));
+  const removed = Object.keys(prev).filter((id) => !(id in images));
+  if (json === S.lastShareJson && !Object.keys(changed).length && !removed.length) return;
+  try {
+    await Store.publishShare(sh.id, snapshot, changed, removed);
+    S.lastShareJson = json;
+    S.shareImages = Object.fromEntries(Object.entries(images).map(([id, d]) => [id, sig(d)]));
+    S.shareStatus = `Shared copy updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. Anyone with this link can see your crates.`;
+  } catch (e) {
+    S.shareStatus = /permission/i.test(e.code || e.message || "")
+      ? "Firebase refused to save the shared copy. Update the database rules in Firebase (see Claude's instructions), then try again."
+      : `Couldn't update the shared copy: ${e.message}`;
+  }
+  const st = $("#share-status");
+  if (st) st.textContent = S.shareStatus;
 }
 
 function renderShelf(id) {
@@ -657,15 +750,15 @@ function renderShelf(id) {
       <div class="shelf-head" id="shelf-head">
         ${heroOf(s, { tag: "div", cls: "crate-card crate-hero", title: "h1", count: false })}
         <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
-        <div class="head-actions">
+        ${S.visitor ? "" : `<div class="head-actions">
           <button class="btn" data-act="edit">Edit</button>
-        </div>
+        </div>`}
       </div>
       ${s.albums.length
-        ? `<div class="grid" id="shelf-grid">${s.albums.map((a) => albumCard(a, { draggable: true })).join("")}</div>
+        ? `<div class="grid" id="shelf-grid">${s.albums.map((a) => albumCard(a, { draggable: !S.visitor })).join("")}</div>
            <p class="meta" style="margin-top:18px">Drag covers to reorder, or drop one in a crate in the sidebar to move it.</p>`
         : `<div class="empty">This crate is empty. Search below to add the first album.</div>`}
-      ${suggestBlock(s, `Suggested for ${s.name}`, 18, "grid")}
+      ${S.visitor ? "" : suggestBlock(s, `Suggested for ${s.name}`, 18, "grid")}
     </section>`;
   fillSuggestions();
   if (S.list?.shelfId === s.id) wireListForm(s);
@@ -777,6 +870,7 @@ function render() {
 
 function renderView() {
   if (!S.raw) return;
+  if (S.visitor && !["shelf", "crates", "home"].includes(S.route.name)) S.route = { name: "crates" };
   closeMenu();
   const r = S.route;
   if (r.name === "shelf") renderShelf(r.id);
@@ -788,7 +882,7 @@ function renderView() {
   else if (r.name === "history") renderHistory();
   else if (r.name === "crates") renderCrates();
   else if (r.name === "search") renderSearch();
-  else if (typeof renderLanding === "function" && !isPhone()) renderLanding();
+  else if (typeof renderLanding === "function" && !isPhone() && !S.visitor) renderLanding();
   else renderCrates();
   markActive();
 }
@@ -1547,6 +1641,17 @@ rail.addEventListener("drop", async (e) => {
 // has been set up; starting earlier could draw crates before the cover code exists.
 function bootCrate() {
   window.addEventListener("hashchange", route);
+  const shareId = new URLSearchParams(location.search).get("share");
+  if (shareId) {
+    S.visitor = true;
+    document.body.classList.add("visitor");
+    window.__crateBooted = true;
+    view.innerHTML = `<div class="empty offline">Opening the shared crates…</div>`;
+    Store.startShared(shareId, onData)
+      .then(() => { try { route(); } catch (e) { showCrash(e); } })
+      .catch((e) => { view.innerHTML = `<div class="empty offline">${esc(e.message || "This shared link couldn't be opened.")}</div>`; });
+    return;
+  }
   $("#top-search").innerHTML = liveBox({ placeholder: "Search any album or artist to add" });
   Store.onAuth((user) => { S.user = user; renderAccount(); });
   renderAccount();

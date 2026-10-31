@@ -594,3 +594,17 @@ a.crate-card:hover { transform: translateY(-1px); }
   #top-search { order: 2; flex: 1 1 100%; }
   .crate-grid { gap: 12px; }
 }
+
+/* ---------- sharing */
+.crates-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.share-box { display: grid; gap: 10px; max-width: 720px; margin: 4px 0 18px; padding: 16px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); }
+.share-box .note { margin: 0; }
+.share-row { display: flex; gap: 8px; }
+.share-row input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: var(--radius); background: var(--raise); color: var(--fg); border: 1px solid var(--line); font: 13px var(--mono); }
+.share-status { margin: 0; text-transform: none; letter-spacing: 0; }
+.danger-link { color: var(--danger); justify-self: start; }
+.visitor-note { margin: -4px 0 14px; text-transform: none; letter-spacing: 0; }
+/* Visitors see crates and albums only. */
+body.visitor .more, body.visitor #top-search, body.visitor #account, body.visitor .new-shelf, body.visitor .rail-pages,
+body.visitor .rail-account, body.visitor [data-act], body.visitor .suggest, body.visitor .hamburger { display: none !important; }
+body.visitor .top { min-height: 8px; padding: 8px 0; }

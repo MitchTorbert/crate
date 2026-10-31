@@ -45,6 +45,18 @@ const Store = (() => {
     document.head.append(s);
   });
 
+  async function loadFirebase(config) {
+    if (window.firebase?.apps?.length) return;
+    const v = "10.12.2";
+    await loadScript(`https://www.gstatic.com/firebasejs/${v}/firebase-app-compat.js`);
+    await Promise.all([
+      loadScript(`https://www.gstatic.com/firebasejs/${v}/firebase-auth-compat.js`),
+      loadScript(`https://www.gstatic.com/firebasejs/${v}/firebase-firestore-compat.js`),
+    ]);
+    firebase.initializeApp(config);
+    fs = firebase.firestore();
+  }
+
   async function initFirebase(config) {
     const v = "10.12.2";
     await loadScript(`https://www.gstatic.com/firebasejs/${v}/firebase-app-compat.js`);
@@ -113,6 +125,51 @@ const Store = (() => {
   let toastFn = null;
 
   return {
+    // ---------------------------------------------------------------- shared, read-only copies
+    // shares/<id> holds a snapshot of the owner's crates (and shares/<id>/images their uploaded
+    // covers). Anyone with the link can read it; only the owner can change it (firestore.rules).
+
+    /** For a visitor: show a shared copy, live, without signing in. */
+    async startShared(shareId, onChange) {
+      listener = onChange;
+      mode = "shared";
+      await loadFirebase(window.CRATE_CONFIG.firebase);
+      const ref = fs.collection("shares").doc(shareId);
+      let doc = null, imgs = {};
+      const push = () => {
+        if (!doc) return;
+        const images = {};
+        for (const [id, c] of Object.entries(doc.covers || {})) images[id] = c.uploaded ? { ...c, data: imgs[id]?.data || "" } : c;
+        state = { shelves: doc.shelves || {}, albums: doc.albums || {}, images, meta: { share: { by: doc.by || "", updatedAt: doc.updatedAt } } };
+        emit();
+      };
+      await new Promise((resolve, reject) => {
+        ref.onSnapshot((snap) => {
+          if (!snap.exists) { reject(new Error("This shared link doesn't exist any more.")); return; }
+          doc = snap.data(); push(); resolve();
+        }, reject);
+        ref.collection("images").onSnapshot((snap) => { imgs = {}; snap.forEach((d) => { imgs[d.id] = d.data(); }); push(); }, () => {});
+      });
+    },
+
+    /** For the owner: write (or refresh) the shared copy. */
+    async publishShare(shareId, snapshot, changedImages = {}, removedImageIds = []) {
+      if (mode !== "cloud") throw new Error("Sign in to Crate to share your crates.");
+      const ref = fs.collection("shares").doc(shareId);
+      await ref.set({ ...snapshot, owner: uid, updatedAt: Math.floor(Date.now() / 1000) });
+      for (const [id, data] of Object.entries(changedImages)) await ref.collection("images").doc(id).set(data);
+      for (const id of removedImageIds) await ref.collection("images").doc(id).delete();
+    },
+
+    async unpublishShare(shareId, imageIds = []) {
+      if (mode !== "cloud") return;
+      const ref = fs.collection("shares").doc(shareId);
+      for (const id of imageIds) await ref.collection("images").doc(id).delete().catch(() => {});
+      await ref.delete();
+    },
+
+    displayName: () => (window.firebase?.auth?.().currentUser?.displayName || ""),
+
     async start(onChange, { toast } = {}) {
       listener = onChange; toastFn = toast;
       await startLocal();
