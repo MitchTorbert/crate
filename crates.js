@@ -623,3 +623,35 @@ function wireCrateReorder(nav) {
 
 // The sidebar is in the page from the start, so reordering can be switched on right away.
 wireCrateReorder(document.getElementById("shelf-nav"));
+
+// ------------------------------------------------------------------ crate titles always fit
+// Instead of cutting a title off after two lines (which clipped tall letters and the tails
+// of g, y and p), each title shrinks until all of it fits inside its card.
+
+function fitTitle(card) {
+  const t = card.querySelector(".cc-title");
+  const h = card.clientHeight;
+  if (!t || !h) return;
+  t.style.setProperty("--fit", "1");
+  let f = 1;
+  for (let i = 0; i < 16 && (t.scrollHeight > h * (card.querySelector(".cc-count") ? 0.72 : 0.84) || t.scrollWidth > t.clientWidth + 1); i++) {
+    f *= 0.92;
+    t.style.setProperty("--fit", f.toFixed(3));
+  }
+}
+
+const titleSizes = new ResizeObserver((entries) => entries.forEach((e) => fitTitle(e.target)));
+const titleSeen = new WeakSet();
+let titleFrame = 0;
+function fitNewTitles() {
+  titleFrame = 0;
+  document.querySelectorAll(".crate-card").forEach((card) => {
+    if (titleSeen.has(card)) return;
+    titleSeen.add(card);
+    titleSizes.observe(card); // measures once now, and again whenever the card changes size
+  });
+}
+new MutationObserver(() => { if (!titleFrame) titleFrame = requestAnimationFrame(fitNewTitles); })
+  .observe(document.body, { childList: true, subtree: true });
+// A web font arriving changes the shape of the words, so measure again.
+document.fonts?.addEventListener?.("loadingdone", () => document.querySelectorAll(".crate-card").forEach(fitTitle));

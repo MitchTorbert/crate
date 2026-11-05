@@ -156,7 +156,7 @@ main { --gutter: clamp(16px, 4vw, 56px); min-width: 0; padding-block: 0 96px; pa
 }
 .album:hover .play, .cover:focus-visible .play { opacity: 1; transform: none; }
 .album-title { font-weight: 600; margin-top: 10px; line-height: 1.25;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .album-sub { color: var(--muted); font-size: 13px; margin-top: 2px; display: flex; gap: 6px; min-width: 0; }
 .album-sub .artist { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .album-sub .yr { font-family: var(--mono); font-size: 12px; flex: none; }
@@ -435,13 +435,12 @@ a.crate-card:hover { transform: translateY(-1px); }
 .cc-scrim { position: absolute; inset: 0; background: linear-gradient(0deg, rgba(0,0,0,.78) 0, rgba(0,0,0,.35) 45%, rgba(0,0,0,.05) 80%); }
 .cc-title {
   position: absolute; left: 6%; right: 16%; bottom: 9%; margin: 0;
-  font-size: calc(clamp(15px, 10.5cqw, 120px) * var(--fs, 1)); line-height: .95; letter-spacing: .005em; color: #fff;
-  text-shadow: 0 2px 12px rgba(0,0,0,.55); text-wrap: balance; overflow-wrap: anywhere;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: calc(clamp(15px, 10.5cqw, 120px) * var(--fs, 1) * var(--fit, 1)); line-height: .95; letter-spacing: .005em; color: #fff;
+  text-shadow: 0 2px 12px rgba(0,0,0,.55); text-wrap: balance; overflow-wrap: break-word;
 }
 .cc-count { position: absolute; right: 5%; bottom: 9%; font: 12px var(--mono); color: rgba(255,255,255,.85); font-variant-numeric: tabular-nums; }
 .crate-hero { flex: 1 1 100%; }
-.crate-hero .cc-title { font-size: calc(clamp(28px, 9cqw, 132px) * var(--fs, 1)); left: 4%; right: 4%; bottom: 10%; }
+.crate-hero .cc-title { font-size: calc(clamp(28px, 9cqw, 132px) * var(--fs, 1) * var(--fit, 1)); left: 4%; right: 4%; bottom: 10%; }
 .home-hero { max-width: 760px; }
 .head-row { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; flex: 1 1 100%; }
 #rename-form input.rename { font: inherit; color: #fff; text-transform: inherit; border-bottom-color: #fff; }
@@ -557,7 +556,7 @@ a.crate-card:hover { transform: translateY(-1px); }
 }
 
 /* titles: room for descenders (g, y, p) under the line clamp */
-.cc-title { line-height: 1.08; padding: .04em 0 .14em; }
+.cc-title { line-height: 1.12; padding: .1em 0 .2em; overflow: visible; }
 .ce-font span { line-height: 1.25; padding-bottom: .08em; }
 .ce-font-head input { flex: 1; min-width: 0; max-width: 260px; padding: 6px 10px; border-radius: var(--radius); background: var(--raise); border: 1px solid var(--line); color: var(--fg); }
 
@@ -608,3 +607,8 @@ a.crate-card:hover { transform: translateY(-1px); }
 body.visitor .more, body.visitor #top-search, body.visitor #account, body.visitor .new-shelf, body.visitor .rail-pages,
 body.visitor .rail-account, body.visitor [data-act], body.visitor .suggest, body.visitor .hamburger { display: none !important; }
 body.visitor .top { min-height: 8px; padding: 8px 0; }
+
+/* ---------- sort inside a crate */
+.head-actions { align-items: center; }
+.sort-pick { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.sort-pick select { padding: 7px 10px; border-radius: var(--radius); background: var(--raise); border: 1px solid var(--line); color: var(--fg); font: inherit; font-size: 14px; }

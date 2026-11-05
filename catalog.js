@@ -113,6 +113,8 @@ const Catalog = (() => {
     const p = new URLSearchParams({ term, entity: "album", limit: String(limit), country: "US" });
     const res = await fetch("https://itunes.apple.com/search?" + p).catch(() => null);
     const d = res?.ok ? await res.json().catch(() => null) : null;
+    // Apple turns people away when asked too often. Don't remember a refusal as "nothing found".
+    if (!d) return [];
     const out = (d?.results || [])
       .filter((r) => r.collectionName && !(/ - Single$/.test(r.collectionName) && (r.trackCount || 0) < 4))
       .map((r) => ({

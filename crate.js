@@ -1,5 +1,5 @@
 "use strict";
-// Crate 20261031155653. Built from config.js, catalog.js, store.js, app.js, crates.js, history.js, landing.js, vault.js by bump.py; edit those files, not this one.
+// Crate 20261105041525. Built from config.js, catalog.js, store.js, app.js, crates.js, history.js, landing.js, vault.js by bump.py; edit those files, not this one.
 
 // ===== config.js =====
 // Firebase web config is public by design; access is controlled by firestore.rules.
@@ -132,6 +132,8 @@ const Catalog = (() => {
     const p = new URLSearchParams({ term, entity: "album", limit: String(limit), country: "US" });
     const res = await fetch("https://itunes.apple.com/search?" + p).catch(() => null);
     const d = res?.ok ? await res.json().catch(() => null) : null;
+    // Apple turns people away when asked too often. Don't remember a refusal as "nothing found".
+    if (!d) return [];
     const out = (d?.results || [])
       .filter((r) => r.collectionName && !(/ - Single$/.test(r.collectionName) && (r.trackCount || 0) < 4))
       .map((r) => ({
@@ -665,7 +667,7 @@ const Store = (() => {
 
 // Set by bump.py to match index.html. A browser that kept an old copy of the page would
 // run new code against old markup (missing scripts), so it refreshes itself once instead.
-const APP_BUILD = "20261031155653";
+const APP_BUILD = "20261105041525";
 (function selfHeal() {
   if (!window.CRATE_VERSION || window.CRATE_VERSION === APP_BUILD || APP_BUILD === "dev") return;
   let tried = false;
@@ -753,6 +755,7 @@ function applyData(raw) {
   if (dragId || !menu.hidden) return;
   render();
   resolveLinksSoon();
+  repairSoon();
 }
 
 async function write(fn) {
@@ -1182,7 +1185,7 @@ function renderLiveList(form, results, q) {
     ${results.map((a) => {
       const have = owned(a);
       return `
-      <div class="live-item">
+      <div class="live-item" data-dz="${keyOf(a)}">
         <img src="${esc(a.cover)}" alt="" loading="lazy">
         <span class="live-text"><b>${esc(a.title)}${yearTag(a)}</b><small>${esc(a.artist)}${a.viaTrack ? ` · has “${esc(a.viaTrack)}”` : ""}</small></span>
         <a class="link" href="${esc(Catalog.ytSearchUrl(a))}" target="_blank" rel="noopener" title="Listen first in YouTube Music">Listen</a>
@@ -1358,7 +1361,7 @@ function wireSharePanel() {
 function shareSnapshot() {
   const shelves = {}, albums = {}, covers = {}, images = {};
   for (const s of S.lib.shelves) {
-    shelves[s.id] = { name: s.name, order: s.order ?? 0, font: s.font || "", titleColor: s.titleColor || "", color: s.color };
+    shelves[s.id] = { name: s.name, order: s.order ?? 0, font: s.font || "", titleColor: s.titleColor || "", color: s.color, sort: s.sort || "" };
     const c = s.cover;
     if (c?.src) covers[s.id] = { src: c.src, size: c.size || 100, x: c.x ?? 50, y: c.y ?? 50 };
     else if (c?.data) { covers[s.id] = { uploaded: true, size: c.size || 100, x: c.x ?? 50, y: c.y ?? 50 }; images[s.id] = { data: c.data }; }
@@ -1413,19 +1416,64 @@ function renderShelf(id) {
       <div class="shelf-head" id="shelf-head">
         ${heroOf(s, { tag: "div", cls: "crate-card crate-hero", title: "h1", count: false })}
         <span class="meta">${discs(s.albums.length)}${s.albums.length ? " · " + span(s.albums) : ""}</span>
-        ${S.visitor ? "" : `<div class="head-actions">
-          <button class="btn" data-act="edit">Edit</button>
-        </div>`}
+        <div class="head-actions">
+          ${s.albums.length > 1 ? sortPicker(s) : ""}
+          ${S.visitor ? "" : `<button class="btn" data-act="edit">Edit</button>`}
+        </div>
       </div>
       ${s.albums.length
-        ? `<div class="grid" id="shelf-grid">${s.albums.map((a) => albumCard(a, { draggable: !S.visitor })).join("")}</div>
-           <p class="meta" style="margin-top:18px">Drag covers to reorder, or drop one in a crate in the sidebar to move it.</p>`
+        ? `<div class="grid" id="shelf-grid"${sortOf(s) ? " data-sorted" : ""}>${sortAlbums(s.albums, sortOf(s)).map((a) => albumCard(a, { draggable: !S.visitor })).join("")}</div>
+           ${S.visitor ? "" : `<p class="meta" style="margin-top:18px">${sortOf(s)
+             ? "Drop a cover on a crate in the sidebar to move it. Switch to Your order to drag covers around."
+             : "Drag covers to reorder, or drop one in a crate in the sidebar to move it."}</p>`}`
         : `<div class="empty">This crate is empty. Search below to add the first album.</div>`}
       ${S.visitor ? "" : suggestBlock(s, `Suggested for ${s.name}`, 18, "grid")}
     </section>`;
   fillSuggestions();
   if (S.list?.shelfId === s.id) wireListForm(s);
 }
+
+// ------------------------------------------------------------------ sorting a crate
+
+const SORTS = { "": "Your order", year: "Year, oldest first", "year-desc": "Year, newest first", artist: "Artist", title: "Album name", added: "Recently added" };
+// Visitors to a shared link can sort for themselves without changing the owner's crate.
+const visitorSort = {};
+const sortOf = (s) => (S.visitor ? visitorSort[s.id] ?? s.sort : s.sort) || "";
+
+function sortPicker(s) {
+  return `<label class="sort-pick">Sort by <select id="crate-sort" data-shelf="${s.id}">
+    ${Object.entries(SORTS).map(([k, v]) => `<option value="${k}" ${k === sortOf(s) ? "selected" : ""}>${v}</option>`).join("")}
+  </select></label>`;
+}
+
+/** "The Black Parade" files under B, like in a record shop. */
+const sortName = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/^(the|a|an)\s+/i, "").toLowerCase();
+
+function sortAlbums(list, how) {
+  if (!how) return list;
+  const byName = (k) => (a, b) => sortName(a[k]).localeCompare(sortName(b[k]), undefined, { numeric: true });
+  const year = (a, dir) => (a.year ? a.year * dir : Infinity); // albums without a year go last either way
+  const cmp = {
+    year: (a, b) => year(a, 1) - year(b, 1) || byName("artist")(a, b),
+    "year-desc": (a, b) => year(a, -1) - year(b, -1) || byName("artist")(a, b),
+    artist: (a, b) => byName("artist")(a, b) || (a.year || 9999) - (b.year || 9999) || byName("title")(a, b),
+    title: (a, b) => byName("title")(a, b) || byName("artist")(a, b),
+    added: (a, b) => (b.addedAt || 0) - (a.addedAt || 0),
+  }[how];
+  return cmp ? [...list].sort(cmp) : list;
+}
+
+view.addEventListener("change", (e) => {
+  const sel = e.target.closest("#crate-sort");
+  if (!sel) return;
+  const s = shelfById(sel.dataset.shelf);
+  if (!s) return;
+  sel.blur(); // so the page redraws when the saved choice comes back
+  if (S.visitor) { visitorSort[s.id] = sel.value; render(); return; }
+  s.sort = sel.value;
+  render();
+  write(() => Store.update("shelves", s.id, { sort: sel.value }));
+});
 
 function listForm(s) {
   return `
@@ -2239,6 +2287,74 @@ function resolveLinksSoon() {
   })();
 }
 
+// ------------------------------------------------------------------ release years and covers, filled in
+
+// Album searches don't include release dates, so suggestions and search results sometimes
+// arrive without a year. Look each one up (a quick, cached catalog call) and add it in place.
+const yearAsked = new Set();
+let yearFrame = 0;
+function fillYears() {
+  yearFrame = 0;
+  for (const el of document.querySelectorAll("[data-dz]")) {
+    const key = el.dataset.dz;
+    const a = found.get(key);
+    const spot = el.querySelector(".album-title, .live-text b");
+    if (!a || !spot || spot.querySelector(".yr-t")) continue;
+    if (a.year) { spot.insertAdjacentHTML("beforeend", yearTag(a)); continue; }
+    if (!a.deezerId || yearAsked.has(key)) continue;
+    yearAsked.add(key);
+    Catalog.detail(a.deezerId).then((d) => {
+      if (!d?.year) return;
+      a.year = d.year;
+      if (!a.cover && d.cover) a.cover = d.cover;
+      document.querySelectorAll(`[data-dz="${CSS.escape(key)}"]`).forEach((card) => {
+        const t = card.querySelector(".album-title, .live-text b");
+        if (t && !t.querySelector(".yr-t")) t.insertAdjacentHTML("beforeend", yearTag(a));
+      });
+    }).catch(() => {});
+  }
+}
+new MutationObserver(() => { if (!yearFrame) yearFrame = requestAnimationFrame(fillYears); })
+  .observe(document.body, { childList: true, subtree: true });
+
+// Albums saved without a cover or year (usually because the catalog was busy or didn't answer
+// at the time) get looked up again in the background, a few per visit. Each is tried at most
+// once a day, and every copy of the album, in every crate, gets the result.
+let repairing = false;
+const REPAIR_AGAIN = 24 * 3600;
+function repairSoon() {
+  if (repairing || S.visitor) return;
+  const seen = new Set();
+  const todo = allAlbums().filter((a) => {
+    const k = Catalog.albumKey(a.title, a.artist);
+    if ((a.cover && a.year) || seen.has(k) || now() - (a.fixTried || 0) < REPAIR_AGAIN) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 12);
+  if (!todo.length) return;
+  repairing = true;
+  setTimeout(async () => {
+    for (const a of todo) {
+      let hit = null;
+      if (a.deezerId) hit = await Catalog.detail(a.deezerId).catch(() => null);
+      if (!hit?.cover || !hit?.year) {
+        const more = await Catalog.find(a.artist, a.title).catch(() => null);
+        if (more) hit = { ...more, ...Object.fromEntries(Object.entries(hit || {}).filter(([, v]) => v)) };
+      }
+      const k = Catalog.albumKey(a.title, a.artist);
+      for (const x of allAlbums().filter((x) => Catalog.albumKey(x.title, x.artist) === k)) {
+        const patch = { fixTried: now() };
+        if (!x.cover && hit?.cover) patch.cover = hit.cover;
+        if (!x.year && hit?.year) patch.year = hit.year;
+        if (!x.deezerId && hit?.deezerId) patch.deezerId = hit.deezerId;
+        await Store.update("albums", x.id, patch).catch(() => {});
+      }
+    }
+    repairing = false;
+    repairSoon(); // the next few, if any
+  }, 6000);
+}
+
 // ------------------------------------------------------------------ drag and drop
 
 let dragId = null;
@@ -2257,14 +2373,14 @@ document.addEventListener("dragend", () => {
 });
 view.addEventListener("dragover", (e) => {
   if (!dragId) return;
-  const card = e.target.closest("#shelf-grid .album");
+  const card = e.target.closest("#shelf-grid:not([data-sorted]) .album");
   if (!card) return;
   e.preventDefault();
   document.querySelectorAll(".drop-before").forEach((el) => el.classList.remove("drop-before"));
   if (card.dataset.id !== dragId) card.classList.add("drop-before");
 });
 view.addEventListener("drop", async (e) => {
-  const card = e.target.closest("#shelf-grid .album");
+  const card = e.target.closest("#shelf-grid:not([data-sorted]) .album");
   if (!dragId || !card || card.dataset.id === dragId) return;
   e.preventDefault();
   const s = shelfById(S.route.id);
@@ -2948,6 +3064,38 @@ function wireCrateReorder(nav) {
 
 // The sidebar is in the page from the start, so reordering can be switched on right away.
 wireCrateReorder(document.getElementById("shelf-nav"));
+
+// ------------------------------------------------------------------ crate titles always fit
+// Instead of cutting a title off after two lines (which clipped tall letters and the tails
+// of g, y and p), each title shrinks until all of it fits inside its card.
+
+function fitTitle(card) {
+  const t = card.querySelector(".cc-title");
+  const h = card.clientHeight;
+  if (!t || !h) return;
+  t.style.setProperty("--fit", "1");
+  let f = 1;
+  for (let i = 0; i < 16 && (t.scrollHeight > h * (card.querySelector(".cc-count") ? 0.72 : 0.84) || t.scrollWidth > t.clientWidth + 1); i++) {
+    f *= 0.92;
+    t.style.setProperty("--fit", f.toFixed(3));
+  }
+}
+
+const titleSizes = new ResizeObserver((entries) => entries.forEach((e) => fitTitle(e.target)));
+const titleSeen = new WeakSet();
+let titleFrame = 0;
+function fitNewTitles() {
+  titleFrame = 0;
+  document.querySelectorAll(".crate-card").forEach((card) => {
+    if (titleSeen.has(card)) return;
+    titleSeen.add(card);
+    titleSizes.observe(card); // measures once now, and again whenever the card changes size
+  });
+}
+new MutationObserver(() => { if (!titleFrame) titleFrame = requestAnimationFrame(fitNewTitles); })
+  .observe(document.body, { childList: true, subtree: true });
+// A web font arriving changes the shape of the words, so measure again.
+document.fonts?.addEventListener?.("loadingdone", () => document.querySelectorAll(".crate-card").forEach(fitTitle));
 
 // ===== history.js =====
 // Listening history from Spotify's "Extended streaming history" export.
